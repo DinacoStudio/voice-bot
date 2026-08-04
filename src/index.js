@@ -8,6 +8,16 @@ const { sanitizeText } = require('./utils/sanitize');
 const config = require('../config.json');
 const pendingMessages = new Map();
 
+function scheduleMessageFlush(key, delayMs) {
+  const pending = pendingMessages.get(key);
+  if (!pending) return;
+
+  clearTimeout(pending.timer);
+  pending.timer = setTimeout(() => {
+    flushMessages(key).catch((error) => console.error('[Message Merge Error]:', error));
+  }, delayMs);
+}
+
 async function flushMessages(key) {
   const pending = pendingMessages.get(key);
   if (!pending) return;
@@ -28,6 +38,7 @@ const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.GuildMessageTyping,
     GatewayIntentBits.GuildVoiceStates,
     GatewayIntentBits.MessageContent,
   ],
@@ -102,15 +113,24 @@ client.on(Events.MessageCreate, async (message) => {
         parts: [],
       };
       pending.parts.push(cleanText);
-      clearTimeout(pending.timer);
-      pending.timer = setTimeout(() => {
-        flushMessages(key).catch((error) => console.error('[Message Merge Error]:', error));
-      }, guildSettings.mergeDelayMs);
       pendingMessages.set(key, pending);
+      scheduleMessageFlush(key, guildSettings.mergeDelayMs);
 
       message.react('🎙️').catch(() => {});
     }
   }
+});
+
+// Discord has no "TypingStop" event. TypingStart is therefore used as a
+// promise that another message is being composed: keep the existing batch
+// open until the message arrives, with a safety timeout for abandoned input.
+client.on(Events.TypingStart, (typing) => {
+  if (!typing.guild || typing.user.bot) return;
+
+  const key = `${typing.guild.id}:${typing.user.id}`;
+  if (!pendingMessages.has(key)) return;
+
+  scheduleMessageFlush(key, config.typingGraceMs || 10_000);
 });
 
 // Auto-disconnect when bot is left alone in voice channel

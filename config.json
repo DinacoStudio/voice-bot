@@ -2,6 +2,7 @@
   "defaultVoice": "ru-RU-SvetlanaNeural",
   "maxTextLength": 200,
   "messageMergeDelayMs": 1500,
+  "typingGraceMs": 10000,
   "readAuthorName": true,
   "readOnlyMuted": false,
   "availableVoices": {
