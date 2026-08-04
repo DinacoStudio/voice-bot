@@ -9,6 +9,12 @@
     "svetlana": { "name": "Svetlana (Женский 🇷🇺)", "voice": "ru-RU-SvetlanaNeural" },
     "dmitry": { "name": "Dmitry (Мужской 🇷🇺)", "voice": "ru-RU-DmitryNeural" },
     "ava": { "name": "Ava (English 🇺🇸)", "voice": "en-US-AvaNeural" },
+    "andrew_multi": { "name": "Andrew Multilingual (Мужской 🌍)", "voice": "en-US-AndrewMultilingualNeural" },
+    "ava_multi": { "name": "Ava Multilingual (Женский 🌍)", "voice": "en-US-AvaMultilingualNeural" },
+    "brian_multi": { "name": "Brian Multilingual (Мужской 🌍)", "voice": "en-US-BrianMultilingualNeural" },
+    "emma_multi": { "name": "Emma Multilingual (Женский 🌍)", "voice": "en-US-EmmaMultilingualNeural" },
+    "polina": { "name": "Polina (Женский 🇺🇦)", "voice": "uk-UA-PolinaNeural" },
+    "ostap": { "name": "Ostap (Мужской 🇺🇦)", "voice": "uk-UA-OstapNeural" },
     "google": { "name": "Google TTS (Стандарт)", "voice": "google-ru" }
   }
 }

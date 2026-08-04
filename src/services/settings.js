@@ -24,6 +24,8 @@ db.exec(`
     auto_tts INTEGER NOT NULL DEFAULT 1 CHECK(auto_tts IN (0, 1)),
     read_author_name INTEGER NOT NULL DEFAULT 1 CHECK(read_author_name IN (0, 1)),
     read_only_muted INTEGER NOT NULL DEFAULT 0 CHECK(read_only_muted IN (0, 1)),
+    reaction_enabled INTEGER NOT NULL DEFAULT 1 CHECK(reaction_enabled IN (0, 1)),
+    auto_disconnect INTEGER NOT NULL DEFAULT 1 CHECK(auto_disconnect IN (0, 1)),
     merge_delay_ms INTEGER NOT NULL DEFAULT 1500 CHECK(merge_delay_ms BETWEEN 300 AND 10000),
     max_text_length INTEGER NOT NULL DEFAULT 200 CHECK(max_text_length BETWEEN 50 AND 1000),
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -34,6 +36,16 @@ db.exec(`
     value TEXT NOT NULL
   );
 `);
+
+function ensureColumn(table, column, definition) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!columns.some((item) => item.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
+ensureColumn('guild_settings', 'reaction_enabled', 'INTEGER NOT NULL DEFAULT 1 CHECK(reaction_enabled IN (0, 1))');
+ensureColumn('guild_settings', 'auto_disconnect', 'INTEGER NOT NULL DEFAULT 1 CHECK(auto_disconnect IN (0, 1))');
 
 const selectUser = db.prepare('SELECT * FROM user_settings WHERE user_id = ?');
 const upsertUser = db.prepare(`
@@ -46,11 +58,14 @@ const upsertUser = db.prepare(`
 const selectGuild = db.prepare('SELECT * FROM guild_settings WHERE guild_id = ?');
 const upsertGuild = db.prepare(`
   INSERT INTO guild_settings
-    (guild_id, auto_tts, read_author_name, read_only_muted, merge_delay_ms, max_text_length, updated_at)
-  VALUES (@guildId, @autoTts, @readAuthorName, @readOnlyMuted, @mergeDelayMs, @maxTextLength, CURRENT_TIMESTAMP)
+    (guild_id, auto_tts, read_author_name, read_only_muted, reaction_enabled, auto_disconnect,
+     merge_delay_ms, max_text_length, updated_at)
+  VALUES (@guildId, @autoTts, @readAuthorName, @readOnlyMuted, @reactionEnabled, @autoDisconnect,
+          @mergeDelayMs, @maxTextLength, CURRENT_TIMESTAMP)
   ON CONFLICT(guild_id) DO UPDATE SET
     auto_tts = excluded.auto_tts, read_author_name = excluded.read_author_name,
-    read_only_muted = excluded.read_only_muted, merge_delay_ms = excluded.merge_delay_ms,
+    read_only_muted = excluded.read_only_muted, reaction_enabled = excluded.reaction_enabled,
+    auto_disconnect = excluded.auto_disconnect, merge_delay_ms = excluded.merge_delay_ms,
     max_text_length = excluded.max_text_length, updated_at = CURRENT_TIMESTAMP
 `);
 
@@ -77,6 +92,8 @@ function getGuild(guildId) {
         autoTts: Boolean(row.auto_tts),
         readAuthorName: Boolean(row.read_author_name),
         readOnlyMuted: Boolean(row.read_only_muted),
+        reactionEnabled: Boolean(row.reaction_enabled),
+        autoDisconnect: Boolean(row.auto_disconnect),
         mergeDelayMs: row.merge_delay_ms,
         maxTextLength: row.max_text_length,
       }
@@ -84,6 +101,8 @@ function getGuild(guildId) {
         autoTts: true,
         readAuthorName: config.readAuthorName,
         readOnlyMuted: config.readOnlyMuted,
+        reactionEnabled: true,
+        autoDisconnect: true,
         mergeDelayMs: config.messageMergeDelayMs || 1500,
         maxTextLength: config.maxTextLength || 200,
       };
@@ -98,6 +117,8 @@ function updateGuild(guildId, changes) {
     autoTts: Number(Boolean(next.autoTts)),
     readAuthorName: Number(Boolean(next.readAuthorName)),
     readOnlyMuted: Number(Boolean(next.readOnlyMuted)),
+    reactionEnabled: Number(Boolean(next.reactionEnabled)),
+    autoDisconnect: Number(Boolean(next.autoDisconnect)),
     mergeDelayMs: next.mergeDelayMs,
     maxTextLength: next.maxTextLength,
   });

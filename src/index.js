@@ -116,7 +116,9 @@ client.on(Events.MessageCreate, async (message) => {
       pendingMessages.set(key, pending);
       scheduleMessageFlush(key, guildSettings.mergeDelayMs);
 
-      message.react('🎙️').catch(() => {});
+      if (guildSettings.reactionEnabled) {
+        message.react('🎙️').catch(() => {});
+      }
     }
   }
 });
@@ -137,8 +139,9 @@ client.on(Events.TypingStart, (typing) => {
 client.on(Events.VoiceStateUpdate, (oldState, newState) => {
   const guildId = oldState.guild.id;
   const state = playerManager.getState(guildId);
+  const guildSettings = settings.getGuild(guildId);
 
-  if (state && state.connection && state.currentChannelId) {
+  if (guildSettings.autoDisconnect && state && state.connection && state.currentChannelId) {
     const channel = oldState.guild.channels.cache.get(state.currentChannelId);
     if (channel) {
       const humanMembers = channel.members.filter((m) => !m.user.bot);

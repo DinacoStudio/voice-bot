@@ -14,6 +14,7 @@ const playerManager = require('../services/player');
 const settings = require('../services/settings');
 const { sanitizeText } = require('../utils/sanitize');
 const config = require('../../config.json');
+const voiceChoices = Object.entries(config.availableVoices).map(([value, item]) => ({ name: item.name, value }));
 
 // 1. Define Slash Commands data
 const commands = [
@@ -43,24 +44,14 @@ const commands = [
         .setName('select')
         .setDescription('Выберите голос из списка')
         .setRequired(true)
-        .addChoices(
-          { name: 'Svetlana (Женский 🇷🇺 - Edge Neural)', value: 'svetlana' },
-          { name: 'Dmitry (Мужской 🇷🇺 - Edge Neural)', value: 'dmitry' },
-          { name: 'Ava (English 🇺🇸 - Edge Neural)', value: 'ava' },
-          { name: 'Google TTS (Стандарт)', value: 'google' }
-        )
+        .addChoices(...voiceChoices)
     ),
 
   new SlashCommandBuilder()
     .setName('settings')
     .setDescription('Настроить ваш голос и скорость речи')
     .addStringOption((option) =>
-      option.setName('voice').setDescription('Ваш голос').addChoices(
-        { name: 'Svetlana (Женский 🇷🇺)', value: 'svetlana' },
-        { name: 'Dmitry (Мужской 🇷🇺)', value: 'dmitry' },
-        { name: 'Ava (English 🇺🇸)', value: 'ava' },
-        { name: 'Google TTS', value: 'google' }
-      )
+      option.setName('voice').setDescription('Ваш голос').addChoices(...voiceChoices)
     )
     .addNumberOption((option) =>
       option
@@ -101,6 +92,8 @@ function buildAdminPanel(guildId) {
       { name: '🎙️ Автоозвучка', value: enabled(guild.autoTts), inline: true },
       { name: '👤 Имя автора', value: enabled(guild.readAuthorName), inline: true },
       { name: '🔇 Только без микрофона', value: enabled(guild.readOnlyMuted), inline: true },
+      { name: '🎙️ Смайлик-реакция', value: enabled(guild.reactionEnabled), inline: true },
+      { name: '🚪 Автоотключение', value: enabled(guild.autoDisconnect), inline: true },
       { name: '⏱️ Объединение', value: `${guild.mergeDelayMs / 1000} сек. тишины`, inline: true },
       { name: '📝 Лимит текста', value: `${guild.maxTextLength} символов`, inline: true },
       { name: '🗄️ Хранение', value: 'SQLite • WAL • persistent', inline: true }
@@ -108,7 +101,9 @@ function buildAdminPanel(guildId) {
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('tts_admin:autoTts').setLabel('Авто TTS').setEmoji('🎙️').setStyle(guild.autoTts ? ButtonStyle.Success : ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId('tts_admin:readAuthorName').setLabel('Имя автора').setEmoji('👤').setStyle(guild.readAuthorName ? ButtonStyle.Primary : ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId('tts_admin:readOnlyMuted').setLabel('Только muted').setEmoji('🔇').setStyle(guild.readOnlyMuted ? ButtonStyle.Primary : ButtonStyle.Secondary)
+    new ButtonBuilder().setCustomId('tts_admin:readOnlyMuted').setLabel('Только muted').setEmoji('🔇').setStyle(guild.readOnlyMuted ? ButtonStyle.Primary : ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('tts_admin:reactionEnabled').setLabel('Смайлик').setEmoji('🎙️').setStyle(guild.reactionEnabled ? ButtonStyle.Primary : ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId('tts_admin:autoDisconnect').setLabel('Авто leave').setEmoji('🚪').setStyle(guild.autoDisconnect ? ButtonStyle.Primary : ButtonStyle.Secondary)
   );
   const delayRow = new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
