@@ -15,7 +15,10 @@ ENV NODE_ENV=production
 WORKDIR /app
 
 RUN apt-get update \
+    && echo "deb http://deb.debian.org/debian bookworm-backports main non-free" > /etc/apt/sources.list.d/backports.list \
+    && apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates libopus0 \
+    && apt-get install -y --no-install-recommends -t bookworm-backports rhvoice rhvoice-russian \
     && rm -rf /var/lib/apt/lists/* \
     && mkdir -p /app/data \
     && chown -R node:node /app

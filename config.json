@@ -8,11 +8,20 @@
   "availableVoices": {
     "svetlana": { "name": "Svetlana (Женский 🇷🇺)", "voice": "ru-RU-SvetlanaNeural" },
     "dmitry": { "name": "Dmitry (Мужской 🇷🇺)", "voice": "ru-RU-DmitryNeural" },
-    "aidar": { "name": "Aidar (Silero • Мужской 🇷🇺)", "voice": "silero:aidar" },
-    "baya": { "name": "Baya (Silero • Женский 🇷🇺)", "voice": "silero:baya" },
-    "kseniya": { "name": "Kseniya (Silero • Женский 🇷🇺)", "voice": "silero:kseniya" },
-    "xenia": { "name": "Xenia (Silero • Женский 🇷🇺)", "voice": "silero:xenia" },
-    "eugene": { "name": "Eugene (Silero • Мужской 🇷🇺)", "voice": "silero:eugene" },
+    "aleksandr_hq": { "name": "Aleksandr HQ (RHVoice • Мужской)", "voice": "rhvoice:aleksandr-hq" },
+    "anna": { "name": "Anna (RHVoice • Женский)", "voice": "rhvoice:anna" },
+    "arina": { "name": "Arina (RHVoice • Женский)", "voice": "rhvoice:arina" },
+    "artemiy": { "name": "Artemiy (RHVoice • Мужской)", "voice": "rhvoice:artemiy" },
+    "elena": { "name": "Elena (RHVoice • Женский)", "voice": "rhvoice:elena" },
+    "evgeniy": { "name": "Evgeniy (RHVoice • Мужской)", "voice": "rhvoice:evgeniy-rus" },
+    "irina": { "name": "Irina (RHVoice • Женский)", "voice": "rhvoice:irina" },
+    "mikhail": { "name": "Mikhail (RHVoice • Мужской)", "voice": "rhvoice:mikhail" },
+    "pavel": { "name": "Pavel (RHVoice • Мужской)", "voice": "rhvoice:pavel" },
+    "tatiana": { "name": "Tatiana (RHVoice • Женский)", "voice": "rhvoice:tatiana" },
+    "timofey": { "name": "Timofey (RHVoice • Мужской)", "voice": "rhvoice:timofey" },
+    "umka": { "name": "Umka (RHVoice • Женский)", "voice": "rhvoice:umka" },
+    "victoria": { "name": "Victoria (RHVoice • Женский)", "voice": "rhvoice:victoria" },
+    "vitaliy": { "name": "Vitaliy NG (RHVoice • Мужской)", "voice": "rhvoice:vitaliy-ng" },
     "google": { "name": "Google TTS (Стандарт)", "voice": "google-ru" }
   }
 }

@@ -1,27 +1,54 @@
 const { MsEdgeTTS, OUTPUT_FORMAT } = require('msedge-tts');
 const googleTTS = require('google-tts-api');
 const { Readable } = require('stream');
+const { spawn } = require('child_process');
 const config = require('../../config.json');
 
-async function getSileroAudio(text, voiceName, options) {
-  const baseUrl = process.env.SILERO_TTS_URL || 'http://silero:8000';
-  const rate = Math.min(100, Math.max(0, Math.round(50 + ((Number(options.rate) || 1) - 1) * 50)));
-  const pitch = Math.min(100, Math.max(0, Math.round((Number(options.pitch) || 0) + 50)));
-  const url = new URL('/generate', baseUrl);
-  url.search = new URLSearchParams({
-    text,
-    speaker: voiceName.slice('silero:'.length),
-    sample_rate: '48000',
-    pitch: String(pitch),
-    rate: String(rate),
-  }).toString();
+async function getRHVoiceAudio(text, voiceName, options) {
+  const rate = Math.min(200, Math.max(50, Math.round((Number(options.rate) || 1) * 100)));
+  const pitch = Math.min(150, Math.max(50, Math.round(100 + (Number(options.pitch) || 0))));
+  const volume = Math.min(100, Math.max(20, Math.round(Number(options.volume) || 100)));
+  const args = [
+    '-p', voiceName.slice('rhvoice:'.length),
+    '-r', String(rate),
+    '-t', String(pitch),
+    '-v', String(volume),
+    '-R', '24000',
+    '-q', 'standard',
+    '-o', '-',
+  ];
 
-  const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
-  if (!response.ok) {
-    throw new Error(`Silero returned HTTP ${response.status}`);
-  }
+  return new Promise((resolve, reject) => {
+    const child = spawn('RHVoice-test', args, { stdio: ['pipe', 'pipe', 'pipe'] });
+    const stdout = [];
+    const stderr = [];
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      reject(new Error('RHVoice synthesis timed out'));
+    }, 30_000);
 
-  return Readable.fromWeb(response.body);
+    child.stdout.on('data', (chunk) => stdout.push(chunk));
+    child.stderr.on('data', (chunk) => stderr.push(chunk));
+    child.on('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (code !== 0) {
+        reject(new Error(Buffer.concat(stderr).toString('utf8').trim() || `RHVoice exited with code ${code}`));
+        return;
+      }
+      const audio = Buffer.concat(stdout);
+      if (audio.length < 44) {
+        reject(new Error('RHVoice returned an empty WAV file'));
+        return;
+      }
+      resolve(Readable.from(audio));
+    });
+
+    child.stdin.end(text, 'utf8');
+  });
 }
 
 /**
@@ -39,11 +66,11 @@ async function getTTSAudioSources(text, voiceName = config.defaultVoice, options
   const pitch = `${pitchValue >= 0 ? '+' : ''}${pitchValue}%`;
   const volume = Math.round(Number(options.volume) || 100);
 
-  if (voiceName.startsWith('silero:')) {
+  if (voiceName.startsWith('rhvoice:')) {
     try {
-      return [await getSileroAudio(text, voiceName, options)];
+      return [await getRHVoiceAudio(text, voiceName, options)];
     } catch (error) {
-      console.error(`[Silero TTS Error for voice ${voiceName}]:`, error.message);
+      console.error(`[RHVoice TTS Error for voice ${voiceName}]:`, error.message);
       console.log('[TTS Fallback]: Switching to Microsoft Edge TTS...');
       voiceName = config.defaultVoice;
     }
