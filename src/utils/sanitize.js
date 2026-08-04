@@ -7,6 +7,15 @@
  * @param {number} maxLength - Maximum character length allowed (default 200)
  * @returns {string} Sanitized string ready for TTS
  */
+/**
+ * Sanitizes user message text before sending it to Text-To-Speech API.
+ * Removes URLs, code blocks, custom emojis, mentions, extra spaces,
+ * and heavily prevents character/syllable/pattern spamming.
+ *
+ * @param {string} text - Raw input text
+ * @param {number} maxLength - Maximum character length allowed (default 200)
+ * @returns {string} Sanitized string ready for TTS
+ */
 function sanitizeText(text, maxLength = 200) {
   if (!text || typeof text !== "string") return "";
 
@@ -16,47 +25,58 @@ function sanitizeText(text, maxLength = 200) {
     .replace(/`[^`]*`/g, "")
     // Remove URLs
     .replace(/https?:\/\/\S+/gi, "")
-    // Remove Discord timestamps, slash-command mentions and other tagged entities
+    // Remove Discord timestamps and commands
     .replace(/<t:\d+(?::[tTdDfFR])?>/g, "")
     .replace(/<\/[a-zA-Z0-9_-]+:\d+>/g, "")
-    // Replace custom emojis <:emoji_name:123456> with emoji name
+    // Replace custom emojis
     .replace(/<a?:([a-zA-Z0-9_]+):\d+>/g, "$1")
-    // Remove user mentions <@123456> or <@!123456>
+    // Remove mentions (users, channels, roles)
     .replace(/<@!?\d+>/g, "")
-    // Remove channel mentions <#123456>
     .replace(/<#\d+>/g, "")
-    // Remove role mentions <@&\d+>
     .replace(/<@&\d+>/g, "")
-    // Keep the caption of Markdown links, but skip their destination
+    // Keep Markdown link captions
     .replace(/\[([^\]]+)]\([^)]*\)/g, "$1")
-    // Keep natural speech punctuation, but remove slashes, emoji and service symbols
+    // Keep punctuation, remove service symbols
     .replace(/\p{Extended_Pictographic}/gu, "")
     .replace(/[^\p{L}\p{N}\s.,!?;:'"«»…—–-]/gu, " ")
 
-    // --- АНТИСПАМ БЛОК ---
+    // ==========================================
+    // 🛡️ АНТИСПАМ БЛОК (Продвинутый)
+    // ==========================================
 
-    // 1. Спам словами с цифрами (например: "бля1 бля2 блю3 хап4..." -> "бля1...")
-    // Ищет 4 и более слова с цифрами подряд и оставляет только первое с многоточием.
+    // 1. Спам словами с цифрами ("бля1 бля2 блю3..." -> "бля1...")
     .replace(/([\p{L}]+\d+)(?:[\s.,!?]+[\p{L}]+\d+){3,}/giu, "$1... ")
 
-    // 2. Спам одинаковыми словами (например: "да да да да да" -> "да...")
-    // Ищет одно и то же слово 4 и более раз подряд.
+    // 2. Спам одинаковыми словами ("да да да да да" -> "да...")
     .replace(/([\p{L}]+)(?:[\s.,!?]+\1){3,}/giu, "$1... ")
 
-    // 3. Залипание клавиш (например: "ыыыыыыыы" -> "ыыы")
+    // 3. Спам "ломаным" регистром ("бляА бляБ хапЖ блюАА" -> "бляА...")
+    // Ищет слова, где после строчных букв идут заглавные. 3 таких слова подряд = спам.
+    .replace(
+      /(\b\p{Ll}+\p{Lu}+\b)(?:[\s.,!?]+\b\p{Ll}+\p{Lu}+\b){2,}/gu,
+      "$1... ",
+    )
+
+    // 4. Спам однотипными короткими словами ("бляа блюб блюв блюг" -> "бляа...")
+    // Ищет 4+ слова (длиной 3-6 букв), которые начинаются на одни и те же 2 буквы (например, "бл").
+    .replace(
+      /(\b(\p{L}{2})\p{L}{1,4}\b)(?:[\s.,!?]+\2\p{L}{1,4}\b){3,}/giu,
+      "$1... ",
+    )
+
+    // 5. Залипание клавиш ("ыыыыыыыы" -> "ыыы")
     .replace(/(.)\1{3,}/gi, "$1$1$1")
 
-    // 4. Спам слогами (например: "ахахахахахах" -> "ахах")
+    // 6. Спам слогами ("ахахахахахах" -> "ахах")
     .replace(/(..+?)\1{3,}/gi, "$1$1")
 
-    // ----------------------
+    // ==========================================
 
     // Replace multiple whitespaces/newlines with single space
     .replace(/\s+/g, " ")
     .trim();
 
-  // Punctuation-only messages must not reach TTS. Otherwise the player adds
-  // the author prefix and Discord hears only "<name> говорит".
+  // Punctuation-only messages block
   if (!/[\p{L}\p{N}]/u.test(cleaned)) {
     return "";
   }
