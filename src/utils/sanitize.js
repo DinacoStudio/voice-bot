@@ -8,83 +8,78 @@
  * @returns {string} Sanitized string ready for TTS
  */
 /**
- * Sanitizes user message text before sending it to Text-To-Speech API.
- * Removes URLs, code blocks, custom emojis, mentions, extra spaces,
- * and heavily prevents character/syllable/pattern spamming.
- *
- * @param {string} text - Raw input text
- * @param {number} maxLength - Maximum character length allowed (default 200)
- * @returns {string} Sanitized string ready for TTS
+ * Очищает текст перед отправкой в TTS.
+ * Отлично справляется с настоящими длинными словами, но беспощадно режет спам.
  */
 function sanitizeText(text, maxLength = 200) {
   if (!text || typeof text !== "string") return "";
 
   let cleaned = text
-    // Remove code blocks
+    // 1. Базовая очистка Discord-мусора
     .replace(/```[\s\S]*?```/g, "")
     .replace(/`[^`]*`/g, "")
-    // Remove URLs
     .replace(/https?:\/\/\S+/gi, "")
-    // Remove Discord timestamps and commands
     .replace(/<t:\d+(?::[tTdDfFR])?>/g, "")
     .replace(/<\/[a-zA-Z0-9_-]+:\d+>/g, "")
-    // Replace custom emojis
     .replace(/<a?:([a-zA-Z0-9_]+):\d+>/g, "$1")
-    // Remove mentions (users, channels, roles)
     .replace(/<@!?\d+>/g, "")
     .replace(/<#\d+>/g, "")
     .replace(/<@&\d+>/g, "")
-    // Keep Markdown link captions
     .replace(/\[([^\]]+)]\([^)]*\)/g, "$1")
-    // Keep punctuation, remove service symbols
     .replace(/\p{Extended_Pictographic}/gu, "")
-    .replace(/[^\p{L}\p{N}\s.,!?;:'"«»…—–-]/gu, " ")
+    .replace(/[^\p{L}\p{N}\s.,!?;:'"«»…—–-]/gu, " ");
 
-    // ==========================================
-    // 🛡️ АНТИСПАМ БЛОК (Продвинутый)
-    // ==========================================
+  // ==========================================
+  // 🛡️ ПРОДВИНУТЫЙ АНАЛИЗАТОР СЛОВ
+  // ==========================================
 
-    // 1. Спам словами с цифрами ("бля1 бля2 блю3..." -> "бля1...")
-    .replace(/([\p{L}]+\d+)(?:[\s.,!?]+[\p{L}]+\d+){3,}/giu, "$1... ")
+  // Проходимся по каждому "слову" (последовательности букв и цифр)
+  cleaned = cleaned.replace(/[\p{L}\p{N}]+/gu, (word) => {
+    // Правило 1: Экстремальная длина.
+    // Самое длинное русское слово ~35 букв. Если слово больше 38 букв - это 100% спам.
+    if (word.length > 38) {
+      return word.substring(0, 8) + "...";
+    }
 
-    // 2. Спам одинаковыми словами ("да да да да да" -> "да...")
-    .replace(/([\p{L}]+)(?:[\s.,!?]+\1){3,}/giu, "$1... ")
+    // Правило 2: Цифры в длинном тексте.
+    // Если слово длиннее 15 символов и внутри есть цифры (вап43рп3уа32) - это мусор.
+    // Нормальные длинные слова не содержат цифр внутри.
+    if (word.length > 15 && /\d/.test(word)) {
+      return word.substring(0, 8) + "...";
+    }
 
-    // 3. Спам "ломаным" регистром ("бляА бляБ хапЖ блюАА" -> "бляА...")
-    // Ищет слова, где после строчных букв идут заглавные. 3 таких слова подряд = спам.
-    .replace(
-      /(\b\p{Ll}+\p{Lu}+\b)(?:[\s.,!?]+\b\p{Ll}+\p{Lu}+\b){2,}/gu,
-      "$1... ",
-    )
+    // Правило 3: Нечитаемый набор букв (Согласные/Гласные).
+    // В нормальном языке редко бывает больше 4 согласных или 3 гласных подряд.
+    // Если видим 6+ согласных или 5+ гласных подряд — это удар по клавиатуре.
+    if (
+      /[бвгджзйклмнпрстфхцчшщbcdfghjklmnpqrstvwxz]{6,}/i.test(word) ||
+      /[аеёиоуыэюяaeiouy]{5,}/i.test(word)
+    ) {
+      return word.substring(0, 5) + "...";
+    }
 
-    // 4. Спам однотипными короткими словами ("бляа блюб блюв блюг" -> "бляа...")
-    // Ищет 4+ слова (длиной 3-6 букв), которые начинаются на одни и те же 2 буквы (например, "бл").
-    .replace(
-      /(\b(\p{L}{2})\p{L}{1,4}\b)(?:[\s.,!?]+\2\p{L}{1,4}\b){3,}/giu,
-      "$1... ",
-    )
+    // Если слово прошло все проверки, возвращаем его нетронутым
+    return word;
+  });
 
-    // 5. Залипание клавиш ("ыыыыыыыы" -> "ыыы")
+  // ==========================================
+  // 🧹 ФИНАЛЬНЫЕ РЕГУЛЯРКИ ДЛЯ ВСЕЙ СТРОКИ
+  // ==========================================
+  cleaned = cleaned
+    // Залипание клавиш ("бляяяяяяяяяяяяя яяяяяяяяяяяяя" -> "бляяя яяя")
     .replace(/(.)\1{3,}/gi, "$1$1$1")
-
-    // 6. Спам слогами ("ахахахахахах" -> "ахах")
+    // Спам слогами ("ахахахахахах" -> "ахах")
     .replace(/(..+?)\1{3,}/gi, "$1$1")
-
-    // 7. Удары по клавиатуре (гигантские слова без пробелов)
-    // Ищет любую последовательность из 25+ символов без пробелов и оставляет только первые 8.
-    .replace(/([^\s]{8})[^\s]{17,}/g, "$1... ")
-
-    // ==========================================
-
-    // Replace multiple whitespaces/newlines with single space
+    // Лишние пробелы
     .replace(/\s+/g, " ")
     .trim();
 
-  // Punctuation-only messages block
+  // Проверка на то, осталось ли что-то кроме знаков препинания
   if (!/[\p{L}\p{N}]/u.test(cleaned)) {
     return "";
   }
 
+  // Финальная обрезка всего сообщения (чтобы не читал войну и мир)
   if (cleaned.length > maxLength) {
     cleaned = cleaned.substring(0, maxLength) + "...";
   }
