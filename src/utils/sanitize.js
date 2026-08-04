@@ -1,7 +1,7 @@
 /**
  * Sanitizes user message text before sending it to Text-To-Speech API.
  * Removes URLs, code blocks, custom emojis, user/role/channel mentions, extra spaces,
- * and prevents character/syllable spamming.
+ * and prevents character/syllable/word spamming.
  *
  * @param {string} text - Raw input text
  * @param {number} maxLength - Maximum character length allowed (default 200)
@@ -32,10 +32,25 @@ function sanitizeText(text, maxLength = 200) {
     // Keep natural speech punctuation, but remove slashes, emoji and service symbols
     .replace(/\p{Extended_Pictographic}/gu, "")
     .replace(/[^\p{L}\p{N}\s.,!?;:'"«»…—–-]/gu, " ")
-    // Prevent character spam (e.g., "ыыыыыыыы" -> "ыыы")
+
+    // --- АНТИСПАМ БЛОК ---
+
+    // 1. Спам словами с цифрами (например: "бля1 бля2 блю3 хап4..." -> "бля1...")
+    // Ищет 4 и более слова с цифрами подряд и оставляет только первое с многоточием.
+    .replace(/([\p{L}]+\d+)(?:[\s.,!?]+[\p{L}]+\d+){3,}/giu, "$1... ")
+
+    // 2. Спам одинаковыми словами (например: "да да да да да" -> "да...")
+    // Ищет одно и то же слово 4 и более раз подряд.
+    .replace(/([\p{L}]+)(?:[\s.,!?]+\1){3,}/giu, "$1... ")
+
+    // 3. Залипание клавиш (например: "ыыыыыыыы" -> "ыыы")
     .replace(/(.)\1{3,}/gi, "$1$1$1")
-    // Prevent syllable spam (e.g., "ахахахахахах" -> "ахах")
+
+    // 4. Спам слогами (например: "ахахахахахах" -> "ахах")
     .replace(/(..+?)\1{3,}/gi, "$1$1")
+
+    // ----------------------
+
     // Replace multiple whitespaces/newlines with single space
     .replace(/\s+/g, " ")
     .trim();
