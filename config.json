@@ -22,6 +22,7 @@
     "umka": { "name": "Umka (RHVoice • Женский)", "voice": "rhvoice:umka" },
     "victoria": { "name": "Victoria (RHVoice • Женский)", "voice": "rhvoice:victoria" },
     "vitaliy": { "name": "Vitaliy NG (RHVoice • Мужской)", "voice": "rhvoice:vitaliy-ng" },
+    "yuriy": { "name": "Yuriy (RHVoice • Мужской)", "voice": "rhvoice:Yuriy" },
     "google": { "name": "Google TTS (Стандарт)", "voice": "google-ru" }
   }
 }
