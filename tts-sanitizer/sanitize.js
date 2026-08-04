@@ -174,12 +174,13 @@ function sanitizeText(text, maxLength = CONFIG.DEFAULT_MAX_LENGTH) {
     .map((part) => (/^\s+$/.test(part) ? part : collapseCharRepeats(part, 2)))
     .join('');
 
-  // Early exit only for pure single-character (or almost pure) spam
-  // with no word boundaries.
+  // Early exit for pure single-character spam ("аааааа").
+  // Keyboard mash with punctuation is handled later by gibberishScore.
   const letters = onlyLetters(cleaned);
   if (letters.length >= CONFIG.MIN_LETTERS_FOR_ENTROPY && !/\s/.test(cleaned)) {
     const unique = new Set(letters.toLocaleLowerCase('ru-RU')).size;
-    if (unique <= 2) {
+    const punctCount = (cleaned.match(/[.,!?;:]/g) || []).length;
+    if (unique <= 1 && punctCount < 3) {
       return letters.slice(0, 8) + '…';
     }
   }
@@ -207,36 +208,47 @@ function sanitizeText(text, maxLength = CONFIG.DEFAULT_MAX_LENGTH) {
   const gScore = gibberishScore(features);
   const wRep = wordRepetitionScore(features);
 
-  // Keyboard-mash early exit — skip when this is repeated-word spam
-  // (бля бля блю блю…), which the detectors collapse properly.
-  // Use wordRepetitionScore only: maxTokenRatio can be inflated by
-  // repeated punctuation tokens in keyboard mash.
-  const isRepeatWordSpam = wRep >= 0.45;
-
-  if (!isRepeatWordSpam) {
-    // Pure keyboard-mash → silence for TTS
-    if (gScore >= 0.65) {
-      return '';
-    }
-    // Heavy gibberish → tiny stub
-    if (gScore >= 0.45) {
-      const stub = onlyLetters(cleaned).slice(0, 6);
-      return stub ? stub + '…' : '';
-    }
-  }
-
+  // Run detectors FIRST so structured spam (ladders, prefix families)
+  // is collapsed before the gibberish gate can wipe the message.
   const actions = runAllDetectors(tokens);
   const spamScore = computeSpamScore(features, actions.length);
   const level = decideAggressiveness(spamScore);
 
-  // Detectors found concrete spam patterns — always apply strong ones.
-  // Mild actions are applied when the overall spam score is elevated.
   if (actions.length > 0) {
     const threshold = level === 'none' ? 0.55 : 0.35;
     const toApply = actions.filter((a) => a.strength >= threshold);
     if (toApply.length > 0) {
       tokens = applyActions(tokens, toApply);
     }
+  }
+
+  // Gibberish gate.
+  // Extreme gibberish ALWAYS wins (even over single-letter repetition).
+  // Structured spam only protects mid-range scores from being stubbed.
+  const hadStructuredSpam = actions.some(
+    (a) =>
+      a.strength >= 0.7 &&
+      /mass-similar|prefix-family|identical-word/.test(a.reason)
+  );
+
+  if (gScore >= 0.65) {
+    // Extreme keyboard mash / pure noise → silence for TTS
+    return '';
+  }
+  if (gScore >= 0.45 && !hadStructuredSpam && wRep < 0.45) {
+    // Heavy gibberish without structured word-spam → short stub
+    const stub = onlyLetters(cleaned).slice(0, 6);
+    return stub ? stub + '…' : '';
+  }
+
+  // Extra safety: messages made almost entirely of 1–2 letter fragments
+  // with dense punctuation are never worth speaking.
+  if (
+    features.shortTokenRatio >= 0.8 &&
+    features.realWordTokens >= 8 &&
+    features.avgWordLen <= 2.5
+  ) {
+    return '';
   }
 
   // Safety net: if after detectors one base still dominates the token list,

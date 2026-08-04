@@ -86,6 +86,34 @@ function normalizeWord(word) {
     }
   }
 
+  // Strip trailing spam tag letter when the ORIGINAL token is mixed-case:
+  // lowercase stem + uppercase tail letter (бляА, блюГ, helloX).
+  // Does NOT touch ALL-CAPS words (HELLO) or normal Title Case (Hello).
+  if (word.length >= 4) {
+    const lastOrig = word[word.length - 1];
+    if (isLetter(lastOrig)) {
+      const isUpper =
+        lastOrig === lastOrig.toLocaleUpperCase('ru-RU') &&
+        lastOrig !== lastOrig.toLocaleLowerCase('ru-RU');
+      // Require at least one lowercase letter in the stem portion
+      const stemOrig = word.slice(0, -1);
+      const hasLower = [...stemOrig].some((ch) => {
+        if (!isLetter(ch)) return false;
+        return (
+          ch === ch.toLocaleLowerCase('ru-RU') &&
+          ch !== ch.toLocaleUpperCase('ru-RU')
+        );
+      });
+      if (isUpper && hasLower && base.length >= 4) {
+        const prev = base[base.length - 2];
+        const last = base[base.length - 1];
+        if (last !== prev) {
+          base = base.slice(0, -1);
+        }
+      }
+    }
+  }
+
   if (base.length > 24) {
     base = base.slice(0, 16);
   }

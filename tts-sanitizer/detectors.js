@@ -368,11 +368,12 @@ function detectMassSimilarSpam(tokens, bases) {
   ).length;
   if (wordCount < 4) return actions;
 
-  const freq = frequencyMap(bases.filter((b) => b.length >= 2));
+  // Ignore 1–2 letter fragments (keyboard mash, not real words)
+  const freq = frequencyMap(bases.filter((b) => b.length >= 3));
 
   // Rank by frequency, highest first
   const ranked = [...freq.entries()]
-    .filter(([b, c]) => b.length >= 2 && c >= 4)
+    .filter(([b, c]) => b.length >= 3 && c >= 4)
     .sort((a, b) => b[1] - a[1]);
 
   if (ranked.length === 0) return actions;
@@ -414,6 +415,73 @@ function detectMassSimilarSpam(tokens, bases) {
 }
 
 /**
+ * Group tokens by a short prefix family (first 3 letters).
+ * If one family dominates the message, collapse the whole span.
+ * Catches "бляА бляБ блюб блюг хапЖ …" where exact bases differ
+ * but they share a small set of stems.
+ *
+ * @param {string[]} tokens
+ * @param {string[]} bases
+ * @returns {CollapseAction[]}
+ */
+function detectPrefixFamilies(tokens, bases) {
+  const actions = [];
+  const wordIndices = [];
+  for (let i = 0; i < bases.length; i++) {
+    if (bases[i].length >= 3 && !/^[.,!?;:…—–]$/.test(bases[i])) {
+      wordIndices.push(i);
+    }
+  }
+  if (wordIndices.length < 6) return actions;
+
+  // Count families by prefix of length 3
+  const familyCount = new Map();
+  for (const i of wordIndices) {
+    const prefix = bases[i].slice(0, 3);
+    familyCount.set(prefix, (familyCount.get(prefix) || 0) + 1);
+  }
+
+  const ranked = [...familyCount.entries()].sort((a, b) => b[1] - a[1]);
+  const topPrefix = ranked[0][0];
+  const topCount = ranked[0][1];
+  const total = wordIndices.length;
+
+  // Require the top family (or top 2–3 families together) to dominate
+  let covered = 0;
+  const dominantPrefixes = new Set();
+  for (const [prefix, count] of ranked) {
+    if (count < 3) break;
+    if (covered / total >= 0.55 && dominantPrefixes.size >= 1) break;
+    dominantPrefixes.add(prefix);
+    covered += count;
+    if (dominantPrefixes.size >= 4) break;
+  }
+
+  if (covered / total < 0.5 || topCount < 4) return actions;
+
+  // Span covering all tokens that belong to dominant families
+  const indices = wordIndices.filter((i) =>
+    dominantPrefixes.has(bases[i].slice(0, 3))
+  );
+  if (indices.length < 6) return actions;
+
+  // When dominant families cover most of the message, collapse EVERYTHING
+  // so leftover minority tokens (хап, etc.) don't survive.
+  const start = 0;
+  const end = tokens.length;
+
+  actions.push({
+    start,
+    end,
+    replacement: topPrefix + '…',
+    strength: Math.min(1, 0.55 + covered * 0.02),
+    reason: 'prefix-family',
+  });
+
+  return actions;
+}
+
+/**
  * Run all detectors and return a merged, non-overlapping set of actions.
  * Higher-strength actions win when ranges overlap.
  * @param {string[]} tokens
@@ -431,6 +499,7 @@ function runAllDetectors(tokens) {
     ...detectLadderPatterns(tokens, bases),
     ...detectNearDuplicateRuns(tokens, bases),
     ...detectMassSimilarSpam(tokens, bases),
+    ...detectPrefixFamilies(tokens, bases),
   ];
 
   if (all.length === 0) return [];

@@ -41,14 +41,18 @@ function isGibberishToken(token) {
   // No vowels at all in a 4+ letter token
   if (letterCount >= 4 && vowels === 0) return true;
 
-  // Extremely low vowel ratio
-  if (letterCount >= 5 && vowels / letterCount < 0.12) return true;
+  // Low vowel ratio (keyboard mash / consonant soup)
+  if (letterCount >= 5 && vowels / letterCount < 0.18) return true;
+  if (letterCount >= 8 && vowels / letterCount < 0.28) return true;
 
   // Alternating short consonant soup mixed with digits
   if (letterCount >= 3 && /\d/.test(token) && vowels <= 1) return true;
 
   // Long run of consonants inside the token
   if (/[бвгджзйклмнпрстфхцчшщbcdfghjklmnpqrstvwxz]{5,}/u.test(lower)) return true;
+
+  // Very long token mixed with digits is almost always noise
+  if (letterCount >= 12 && /\d/.test(token)) return true;
 
   return false;
 }
@@ -238,35 +242,43 @@ function gibberishScore(features) {
   if (letters < 12 && words < 4) return 0;
 
   // High share of gibberish tokens
-  if (features.gibberishRatio >= 0.7) score += 0.55;
-  else if (features.gibberishRatio >= 0.5) score += 0.35;
-  else if (features.gibberishRatio >= 0.35) score += 0.2;
+  if (features.gibberishRatio >= 0.55) score += 0.55;
+  else if (features.gibberishRatio >= 0.35) score += 0.35;
+  else if (features.gibberishRatio >= 0.2) score += 0.2;
 
   // Very low vowel ratio across the whole message
   if (letters >= 15) {
-    if (features.vowelRatio < 0.12) score += 0.45;
-    else if (features.vowelRatio < 0.2) score += 0.25;
-    else if (features.vowelRatio < 0.28) score += 0.1;
+    if (features.vowelRatio < 0.15) score += 0.5;
+    else if (features.vowelRatio < 0.22) score += 0.3;
+    else if (features.vowelRatio < 0.3) score += 0.15;
   }
 
   // Dense punctuation interleaved with short fragments
-  if (features.punctRatio >= 0.2 && words >= 5) score += 0.35;
-  else if (features.punctRatio >= 0.12 && words >= 8) score += 0.2;
+  if (features.punctRatio >= 0.2 && words >= 5) score += 0.4;
+  else if (features.punctRatio >= 0.12 && words >= 8) score += 0.25;
 
   // Many tiny tokens (keyboard fragments)
-  if (features.shortTokenRatio >= 0.6 && words >= 8) score += 0.3;
-  else if (features.shortTokenRatio >= 0.45 && words >= 10) score += 0.15;
+  if (features.shortTokenRatio >= 0.55 && words >= 6) score += 0.35;
+  else if (features.shortTokenRatio >= 0.4 && words >= 8) score += 0.2;
 
   // Very short average word length with many tokens
-  if (words >= 10 && features.avgWordLen < 3.5) score += 0.25;
-  else if (words >= 8 && features.avgWordLen < 4.0) score += 0.12;
+  if (words >= 8 && features.avgWordLen < 3.0) score += 0.3;
+  else if (words >= 8 && features.avgWordLen < 4.0) score += 0.15;
 
-  // High uniqueness of short tokens = random mash, not repeated spam
-  // (repeated spam is handled elsewhere; here we want random garbage)
+  // High uniqueness of tokens with moderate gibberish = random mash
+  if (
+    words >= 8 &&
+    features.wordUniqueness > 0.6 &&
+    features.gibberishRatio >= 0.2
+  ) {
+    score += 0.25;
+  }
+
+  // Almost no real structure: many unique short fragments
   if (
     words >= 10 &&
-    features.wordUniqueness > 0.7 &&
-    features.gibberishRatio >= 0.4
+    features.avgWordLen < 5 &&
+    features.wordUniqueness > 0.75
   ) {
     score += 0.2;
   }
