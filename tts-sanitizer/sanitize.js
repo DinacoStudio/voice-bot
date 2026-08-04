@@ -2,9 +2,14 @@
 
 const { tokenize, rebuild } = require('./tokenizer');
 const { normalizeWord, cleanWordForDisplay, isNoisyWord } = require('./normalizer');
-const { computeFeatures, lowEntropyScore, wordRepetitionScore } = require('./entropy');
+const {
+  computeFeatures,
+  lowEntropyScore,
+  wordRepetitionScore,
+  gibberishScore,
+} = require('./entropy');
 const { runAllDetectors, applyActions } = require('./detectors');
-const { onlyLetters, clamp } = require('./utils');
+const { onlyLetters, clamp, collapseCharRepeats } = require('./utils');
 
 /**
  * Configuration constants – no magic numbers scattered in logic.
@@ -109,8 +114,9 @@ function cleanTokens(tokens) {
 function computeSpamScore(features, detectorActionCount) {
   let score = 0;
 
-  score += lowEntropyScore(features) * 0.55;
-  score += wordRepetitionScore(features) * 0.35;
+  score += lowEntropyScore(features) * 0.45;
+  score += wordRepetitionScore(features) * 0.3;
+  score += gibberishScore(features) * 0.55;
 
   // Detector activity itself is a strong signal
   if (detectorActionCount >= 3) score += 0.35;
@@ -161,15 +167,19 @@ function sanitizeText(text, maxLength = CONFIG.DEFAULT_MAX_LENGTH) {
   let cleaned = cleanDiscordMarkup(text);
   if (!cleaned) return '';
 
+  // Early global char-repeat collapse (linear).
+  // "сссссер" → "ссер" before entropy/gibberish analysis.
+  cleaned = cleaned
+    .split(/(\s+)/)
+    .map((part) => (/^\s+$/.test(part) ? part : collapseCharRepeats(part, 2)))
+    .join('');
+
   // Early exit only for pure single-character (or almost pure) spam
-  // with no word boundaries. Messages that still contain spaces are
-  // handled by the normal pipeline so that "сссссер" can be cleaned
-  // into a readable word instead of being truncated.
+  // with no word boundaries.
   const letters = onlyLetters(cleaned);
   if (letters.length >= CONFIG.MIN_LETTERS_FOR_ENTROPY && !/\s/.test(cleaned)) {
     const unique = new Set(letters.toLocaleLowerCase('ru-RU')).size;
     if (unique <= 2) {
-      // Classic "аааааааа" style
       return letters.slice(0, 8) + '…';
     }
   }
@@ -194,20 +204,63 @@ function sanitizeText(text, maxLength = CONFIG.DEFAULT_MAX_LENGTH) {
     /^[.,!?;:…—–]$/.test(t) ? t : normalizeWord(t)
   );
   const features = computeFeatures(cleaned, bases);
+  const gScore = gibberishScore(features);
+  const wRep = wordRepetitionScore(features);
+
+  // Keyboard-mash early exit — skip when this is repeated-word spam
+  // (бля бля блю блю…), which the detectors collapse properly.
+  // Use wordRepetitionScore only: maxTokenRatio can be inflated by
+  // repeated punctuation tokens in keyboard mash.
+  const isRepeatWordSpam = wRep >= 0.45;
+
+  if (!isRepeatWordSpam) {
+    // Pure keyboard-mash → silence for TTS
+    if (gScore >= 0.65) {
+      return '';
+    }
+    // Heavy gibberish → tiny stub
+    if (gScore >= 0.45) {
+      const stub = onlyLetters(cleaned).slice(0, 6);
+      return stub ? stub + '…' : '';
+    }
+  }
+
   const actions = runAllDetectors(tokens);
   const spamScore = computeSpamScore(features, actions.length);
   const level = decideAggressiveness(spamScore);
 
-  // Detectors already found concrete spam patterns — apply them.
-  // Score only modulates how aggressive we are with borderline actions.
+  // Detectors found concrete spam patterns — always apply strong ones.
+  // Mild actions are applied when the overall spam score is elevated.
   if (actions.length > 0) {
-    if (level === 'heavy' || level === 'medium' || level === 'light') {
-      tokens = applyActions(tokens, actions);
-    } else {
-      // Even on "none" still apply very strong detections
-      const strong = actions.filter((a) => a.strength >= 0.6);
-      if (strong.length > 0) {
-        tokens = applyActions(tokens, strong);
+    const threshold = level === 'none' ? 0.55 : 0.35;
+    const toApply = actions.filter((a) => a.strength >= threshold);
+    if (toApply.length > 0) {
+      tokens = applyActions(tokens, toApply);
+    }
+  }
+
+  // Safety net: if after detectors one base still dominates the token list,
+  // force a single collapse. Catches edge cases the run-based detectors miss.
+  {
+    const basesAfter = tokens.map((t) =>
+      /^[.,!?;:…—–]$/.test(t) ? t : normalizeWord(t)
+    );
+    const wordBases = basesAfter.filter(
+      (b) => b.length >= 2 && !/^[.,!?;:…—–]$/.test(b)
+    );
+    if (wordBases.length >= 5) {
+      const freq = new Map();
+      for (const b of wordBases) freq.set(b, (freq.get(b) || 0) + 1);
+      let topBase = '';
+      let topCount = 0;
+      for (const [b, c] of freq) {
+        if (c > topCount) {
+          topCount = c;
+          topBase = b;
+        }
+      }
+      if (topCount >= 5 && topCount / wordBases.length >= 0.5) {
+        tokens = [topBase + '…'];
       }
     }
   }

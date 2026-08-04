@@ -31,9 +31,27 @@ const {
 function normalizeWord(word) {
   if (!word) return '';
 
-  // First pass: keep letters only
+  // Strip typical spam suffixes from the raw token first.
+  // Only remove a trailing "letter(s)+digits" or pure-digits tail —
+  // never peel letters off a pure alphabetic word.
+  let stripped = word;
+  if (/\p{N}/u.test(word)) {
+    // Has digits: remove trailing digits, then a short letter prefix of those digits
+    // e.g. "приветA01" → "приветA" → "привет"
+    // e.g. "hello42"   → "hello"
+    // e.g. "abc001"    → "abc"
+    stripped = stripped.replace(/[\p{N}]+$/u, '');
+    // If what remains ends with 1–3 letters that look like a spam tag
+    // (short relative to stem), drop them.
+    stripped = stripped.replace(/(\p{L}{1,3})$/u, (suffix, offset) => {
+      if (offset >= 4) return '';
+      return suffix;
+    });
+  }
+
+  // Keep only letters for the base form
   let base = '';
-  for (const ch of word) {
+  for (const ch of stripped) {
     if (isLetter(ch)) base += ch;
   }
 
@@ -46,22 +64,28 @@ function normalizeWord(word) {
   base = collapseCharRepeats(base, 2);
   base = collapseSyllableRepeats(base, 2);
 
-  // Strip short trailing "noise" letters that often appear in spam suffixes
-  // (single latin letter after a long cyrillic stem, or vice-versa)
-  if (base.length >= 5) {
-    const cyr = /[а-яё]/u;
-    const lat = /[a-z]/;
-    const last = base[base.length - 1];
-    const rest = base.slice(0, -1);
-    if (
-      (cyr.test(rest) && lat.test(last)) ||
-      (lat.test(rest) && cyr.test(last))
-    ) {
-      base = rest;
+  // Strip trailing mixed-script noise (cyr stem + latin tail, or vice-versa)
+  if (base.length >= 4) {
+    const isCyr = (ch) => /[а-яё]/u.test(ch);
+    const isLat = (ch) => /[a-z]/.test(ch);
+
+    let cyrCount = 0;
+    let latCount = 0;
+    const half = Math.ceil(base.length / 2);
+    for (let i = 0; i < half; i++) {
+      if (isCyr(base[i])) cyrCount++;
+      else if (isLat(base[i])) latCount++;
+    }
+    const stemIsCyr = cyrCount >= latCount;
+
+    while (base.length >= 4) {
+      const last = base[base.length - 1];
+      const lastIsForeign = stemIsCyr ? isLat(last) : isCyr(last);
+      if (!lastIsForeign) break;
+      base = base.slice(0, -1);
     }
   }
 
-  // Extremely long base → truncate for safety
   if (base.length > 24) {
     base = base.slice(0, 16);
   }

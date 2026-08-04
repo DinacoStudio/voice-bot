@@ -349,45 +349,67 @@ function detectNearDuplicateRuns(tokens, bases) {
 }
 
 /**
- * Detect mass spam of many different but similar tokens
- * (not necessarily consecutive runs of the same pattern).
- * e.g. many tokens that normalize to the same base.
+ * Detect mass spam of many tokens that share the same normalized base
+ * (not necessarily a tight consecutive run).
+ * e.g. 50× "приветA01"/"приветB02"/… → "привет…"
+ * e.g. бля/блю/хап repeated in a loop → most frequent base + "…"
+ *
+ * When several bases are frequent, pick the single most frequent one
+ * and collapse the whole spam-dominated span to that base.
+ *
  * @param {string[]} tokens
  * @param {string[]} bases
  * @returns {CollapseAction[]}
  */
 function detectMassSimilarSpam(tokens, bases) {
   const actions = [];
-  const freq = frequencyMap(bases.filter((b) => b.length >= 3));
+  const wordCount = bases.filter(
+    (b) => b.length >= 2 && !/^[.,!?;:…—–]$/.test(b)
+  ).length;
+  if (wordCount < 4) return actions;
 
-  // Find bases that appear too often
-  for (const [base, count] of freq) {
-    if (count < 5) continue;
+  const freq = frequencyMap(bases.filter((b) => b.length >= 2));
 
-    // Collect all indices of this base
-    const indices = [];
-    for (let i = 0; i < bases.length; i++) {
-      if (bases[i] === base) indices.push(i);
-    }
+  // Rank by frequency, highest first
+  const ranked = [...freq.entries()]
+    .filter(([b, c]) => b.length >= 2 && c >= 4)
+    .sort((a, b) => b[1] - a[1]);
 
-    if (indices.length < 5) continue;
+  if (ranked.length === 0) return actions;
 
-    // If they are somewhat clustered, collapse the whole span
-    const start = indices[0];
-    const end = indices[indices.length - 1] + 1;
-    const span = end - start;
+  const [topBase, topCount] = ranked[0];
+  const topRelative = topCount / wordCount;
 
-    // Only act if the similar words dominate the span
-    if (indices.length / span >= 0.5) {
-      actions.push({
-        start,
-        end,
-        replacement: tokens[indices[0]] + '…',
-        strength: Math.min(1, 0.5 + indices.length * 0.05),
-        reason: 'mass-similar-spam',
-      });
-    }
+  // Treat all reasonably frequent bases as part of the same spam cluster
+  const frequentBases = new Set(
+    ranked
+      .filter(([, c]) => c >= 4 && c / wordCount >= 0.08)
+      .map(([b]) => b)
+  );
+  frequentBases.add(topBase);
+
+  const spamIndices = [];
+  for (let i = 0; i < bases.length; i++) {
+    if (frequentBases.has(bases[i])) spamIndices.push(i);
   }
+  if (spamIndices.length < 4) return actions;
+
+  const start = spamIndices[0];
+  const end = spamIndices[spamIndices.length - 1] + 1;
+  const span = end - start;
+  const dominatesSpan = spamIndices.length / span >= 0.4;
+  const massAbsolute = topCount >= 6;
+
+  if ((dominatesSpan || massAbsolute) && (topRelative >= 0.15 || topCount >= 8)) {
+    actions.push({
+      start,
+      end,
+      replacement: topBase + '…',
+      strength: Math.min(1, 0.6 + topCount * 0.03),
+      reason: 'mass-similar-spam',
+    });
+  }
+
   return actions;
 }
 
