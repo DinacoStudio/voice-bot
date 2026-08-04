@@ -5,7 +5,8 @@ const {
   AudioPlayerStatus,
   VoiceConnectionStatus,
   entersState,
-  StreamType
+  StreamType,
+  getVoiceConnection,
 } = require('@discordjs/voice');
 const sodium = require('libsodium-wrappers');
 const { Readable } = require('stream');
@@ -116,16 +117,40 @@ class GuildPlayerManager {
 
   leaveChannel(guildId) {
     const state = this.guilds.get(guildId);
-    if (state && state.connection) {
-      try {
-        state.connection.destroy();
-      } catch (e) {}
-      state.connection = null;
-      state.currentChannelId = null;
+
+    if (state) {
       state.queue = [];
       state.isPlaying = false;
-      state.player.stop();
+      state.player.stop(true);
     }
+
+    // Use both our state and discord.js' connection registry. This also
+    // handles a stale/lost manager state and guarantees that /leave really
+    // removes the active voice connection.
+    const connections = new Set([
+      state?.connection,
+      getVoiceConnection(guildId),
+    ].filter(Boolean));
+
+    let disconnected = false;
+    for (const connection of connections) {
+      try {
+        if (connection.state.status !== VoiceConnectionStatus.Destroyed) {
+          connection.destroy();
+        }
+        disconnected = true;
+      } catch (error) {
+        console.error(`[Voice Leave Error in guild ${guildId}]:`, error);
+      }
+    }
+
+    if (state) {
+      state.connection = null;
+      state.currentChannelId = null;
+    }
+
+    this.guilds.delete(guildId);
+    return disconnected;
   }
 
   async enqueue(guildId, text, authorName = null, userOptions = {}) {

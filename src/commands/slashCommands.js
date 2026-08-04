@@ -235,7 +235,13 @@ async function handleSlashCommand(interaction) {
     }
 
     case 'leave': {
-      playerManager.leaveChannel(guildId);
+      const disconnected = playerManager.leaveChannel(guildId);
+      if (!disconnected) {
+        return interaction.reply({
+          content: 'ℹ️ Бот сейчас не подключен к голосовому каналу.',
+          flags: MessageFlags.Ephemeral,
+        });
+      }
       return interaction.reply('👋 Отключился от голосового канала.');
     }
 
