@@ -1,0 +1,33 @@
+{
+  "name": "discord-tts-bot",
+  "version": "2.0.1",
+  "description": "Discord Voice TTS Bot with Slash Commands & Free Neural TTS",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "keywords": [
+    "discord",
+    "tts",
+    "bot",
+    "voice",
+    "slash-commands",
+    "edge-tts",
+    "neural-tts"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@discordjs/opus": "^0.10.0",
+    "@discordjs/voice": "^0.19.2",
+    "better-sqlite3": "^13.0.2",
+    "discord.js": "^14.15.3",
+    "dotenv": "^16.4.5",
+    "ffmpeg-static": "^5.2.0",
+    "google-tts-api": "^2.0.2",
+    "libsodium-wrappers": "^0.7.15",
+    "msedge-tts": "^2.0.4",
+    "tweetnacl": "^1.0.3"
+  }
+}

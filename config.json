@@ -1,0 +1,13 @@
+{
+  "defaultVoice": "ru-RU-SvetlanaNeural",
+  "maxTextLength": 200,
+  "messageMergeDelayMs": 1500,
+  "readAuthorName": true,
+  "readOnlyMuted": false,
+  "availableVoices": {
+    "svetlana": { "name": "Svetlana (Женский 🇷🇺)", "voice": "ru-RU-SvetlanaNeural" },
+    "dmitry": { "name": "Dmitry (Мужской 🇷🇺)", "voice": "ru-RU-DmitryNeural" },
+    "ava": { "name": "Ava (English 🇺🇸)", "voice": "en-US-AvaNeural" },
+    "google": { "name": "Google TTS (Стандарт)", "voice": "google-ru" }
+  }
+}
