@@ -8,6 +8,8 @@ fs.mkdirSync(dataDir, { recursive: true });
 
 const db = new Database(path.join(dataDir, 'tts-bot.sqlite'));
 db.pragma('journal_mode = WAL');
+db.pragma('synchronous = NORMAL');
+db.pragma('busy_timeout = 5000');
 db.pragma('foreign_keys = ON');
 db.exec(`
   CREATE TABLE IF NOT EXISTS user_settings (

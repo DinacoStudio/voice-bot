@@ -111,8 +111,14 @@ client.on(Events.MessageCreate, async (message) => {
         userId: message.author.id,
         authorName: message.member.displayName,
         parts: [],
+        length: 0,
       };
-      pending.parts.push(cleanText);
+      const separatorLength = pending.parts.length ? 2 : 0;
+      const remaining = Math.max(0, guildSettings.maxTextLength - pending.length - separatorLength);
+      if (remaining > 0) {
+        pending.parts.push(cleanText.slice(0, remaining));
+        pending.length += separatorLength + Math.min(cleanText.length, remaining);
+      }
       pendingMessages.set(key, pending);
       scheduleMessageFlush(key, guildSettings.mergeDelayMs);
 
@@ -155,6 +161,27 @@ client.on(Events.VoiceStateUpdate, (oldState, newState) => {
 
 client.on('error', (err) => console.error('[Client Error]:', err));
 process.on('unhandledRejection', (err) => console.error('[Unhandled Rejection]:', err));
+process.on('uncaughtException', (err) => {
+  console.error('[Uncaught Exception]:', err);
+  process.exitCode = 1;
+  shutdown('uncaughtException');
+});
+
+let shuttingDown = false;
+function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[Shutdown]: ${signal}`);
+  for (const pending of pendingMessages.values()) clearTimeout(pending.timer);
+  pendingMessages.clear();
+  playerManager.leaveAll();
+  client.destroy();
+  settings.close();
+  setTimeout(() => process.exit(process.exitCode || 0), 250).unref();
+}
+
+process.once('SIGTERM', () => shutdown('SIGTERM'));
+process.once('SIGINT', () => shutdown('SIGINT'));
 
 const token = process.env.DISCORD_TOKEN;
 if (!token || token === 'your_bot_token_here') {

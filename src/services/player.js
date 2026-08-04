@@ -13,6 +13,9 @@ const { Readable } = require('stream');
 const { getTTSAudioSources } = require('./tts');
 const config = require('../../config.json');
 
+const MAX_QUEUE_SIZE = 50;
+const PLAYBACK_TIMEOUT_MS = 120_000;
+
 class GuildPlayerManager {
   constructor() {
     this.guilds = new Map();
@@ -27,6 +30,9 @@ class GuildPlayerManager {
         player: player,
         queue: [],
         isPlaying: false,
+        isProcessing: false,
+        playbackTimer: null,
+        generation: 0,
         voice: config.defaultVoice,
         currentChannelId: null,
       });
@@ -34,17 +40,28 @@ class GuildPlayerManager {
       const state = this.guilds.get(guildId);
 
       state.player.on(AudioPlayerStatus.Idle, () => {
+        this.clearPlaybackTimer(state);
         state.isPlaying = false;
+        state.isProcessing = false;
         this.processQueue(guildId);
       });
 
       state.player.on('error', (error) => {
         console.error(`[AudioPlayer Error in guild ${guildId}]:`, error.message);
+        this.clearPlaybackTimer(state);
         state.isPlaying = false;
+        state.isProcessing = false;
         this.processQueue(guildId);
       });
     }
     return this.guilds.get(guildId);
+  }
+
+  clearPlaybackTimer(state) {
+    if (state.playbackTimer) {
+      clearTimeout(state.playbackTimer);
+      state.playbackTimer = null;
+    }
   }
 
   async joinChannel(voiceChannel) {
@@ -60,14 +77,22 @@ class GuildPlayerManager {
       state.connection.state.status !== VoiceConnectionStatus.Destroyed &&
       state.connection.state.status !== VoiceConnectionStatus.Disconnected
     ) {
+      await entersState(state.connection, VoiceConnectionStatus.Ready, 20_000);
       return state.connection;
     }
 
     // Destroy existing connection if moving to a new channel
     if (state.connection) {
+      state.generation += 1;
+      state.queue = [];
+      state.isPlaying = false;
+      this.clearPlaybackTimer(state);
+      state.player.stop(true);
       try {
         state.connection.destroy();
-      } catch (e) {}
+      } catch (error) {
+        console.error(`[Voice Move Error in guild ${guildId}]:`, error);
+      }
     }
 
     const connection = joinVoiceChannel({
@@ -119,8 +144,11 @@ class GuildPlayerManager {
     const state = this.guilds.get(guildId);
 
     if (state) {
+      state.generation += 1;
       state.queue = [];
       state.isPlaying = false;
+      state.isProcessing = false;
+      this.clearPlaybackTimer(state);
       state.player.stop(true);
     }
 
@@ -159,36 +187,66 @@ class GuildPlayerManager {
 
     const fullText = authorName ? `${authorName} говорит: ${text}` : text;
 
-    try {
-      await entersState(state.connection, VoiceConnectionStatus.Ready, 10_000);
-
-      const voice = userOptions.voice || state.voice;
-      const sources = await getTTSAudioSources(fullText, voice, userOptions);
-      for (const source of sources) {
-        state.queue.push(source);
-      }
-
-      if (!state.isPlaying) {
-        this.processQueue(guildId);
-      }
-      return true;
-    } catch (error) {
-      console.error(`[Enqueue Error in guild ${guildId}]:`, error);
+    if (state.queue.length >= MAX_QUEUE_SIZE) {
+      console.warn(`[Queue Full in guild ${guildId}]: message dropped`);
       return false;
     }
+
+    state.queue.push({
+      type: 'text',
+      text: fullText,
+      voice: userOptions.voice || state.voice,
+      options: { ...userOptions },
+    });
+    this.processQueue(guildId);
+    return true;
   }
 
-  processQueue(guildId) {
+  async processQueue(guildId) {
     const state = this.guilds.get(guildId);
-    if (!state || state.queue.length === 0) {
-      if (state) state.isPlaying = false;
+    if (!state || state.isProcessing || state.isPlaying) return;
+
+    if (state.queue.length === 0) {
+      state.isPlaying = false;
       return;
     }
 
-    state.isPlaying = true;
-    const source = state.queue.shift();
+    const connection = state.connection;
+    if (!connection || connection.state.status === VoiceConnectionStatus.Destroyed) {
+      state.queue = [];
+      return;
+    }
+
+    state.isProcessing = true;
+    const generation = state.generation;
+    const item = state.queue.shift();
 
     try {
+      await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
+
+      let source;
+      if (item.type === 'text') {
+        const sources = await getTTSAudioSources(item.text, item.voice, item.options);
+        if (!sources.length) throw new Error('TTS returned no audio sources');
+        source = sources.shift();
+
+        if (generation !== state.generation || state.connection !== connection) {
+          state.isProcessing = false;
+          this.processQueue(guildId);
+          return;
+        }
+        state.queue.unshift(...sources.map((audioSource) => ({ type: 'audio', source: audioSource })));
+      } else {
+        source = item.source;
+      }
+
+      // /leave or a reconnect may have invalidated this async synthesis.
+      if (generation !== state.generation || state.connection !== connection) {
+        state.isProcessing = false;
+        this.processQueue(guildId);
+        return;
+      }
+
       let resource;
       if (typeof source === 'string') {
         resource = createAudioResource(source, {
@@ -204,10 +262,16 @@ class GuildPlayerManager {
         );
       }
 
+      state.isPlaying = true;
       state.player.play(resource);
+      state.playbackTimer = setTimeout(() => {
+        console.error(`[Playback Timeout in guild ${guildId}]: skipping stuck audio`);
+        state.player.stop(true);
+      }, PLAYBACK_TIMEOUT_MS);
     } catch (error) {
-      console.error(`[Play Resource Error in guild ${guildId}]:`, error);
+      console.error(`[Queue Processing Error in guild ${guildId}]:`, error);
       state.isPlaying = false;
+      state.isProcessing = false;
       this.processQueue(guildId);
     }
   }
@@ -215,7 +279,16 @@ class GuildPlayerManager {
   skip(guildId) {
     const state = this.guilds.get(guildId);
     if (state && state.player) {
-      state.player.stop();
+      state.generation += 1;
+      this.clearPlaybackTimer(state);
+      const stopped = state.player.stop(true);
+      if (!stopped && !state.isProcessing) this.processQueue(guildId);
+    }
+  }
+
+  leaveAll() {
+    for (const guildId of [...this.guilds.keys()]) {
+      this.leaveChannel(guildId);
     }
   }
 

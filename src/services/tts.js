@@ -3,6 +3,8 @@ const googleTTS = require('google-tts-api');
 const { Readable } = require('stream');
 const { spawn } = require('child_process');
 const config = require('../../config.json');
+const RHVOICE_TIMEOUT_MS = 30_000;
+const MAX_AUDIO_BYTES = 32 * 1024 * 1024;
 
 async function getRHVoiceAudio(text, voiceName, options) {
   const rate = Math.min(200, Math.max(50, Math.round((Number(options.rate) || 1) * 100)));
@@ -22,31 +24,53 @@ async function getRHVoiceAudio(text, voiceName, options) {
     const child = spawn('RHVoice-test', args, { stdio: ['pipe', 'pipe', 'pipe'] });
     const stdout = [];
     const stderr = [];
-    const timer = setTimeout(() => {
-      child.kill('SIGKILL');
-      reject(new Error('RHVoice synthesis timed out'));
-    }, 30_000);
-
-    child.stdout.on('data', (chunk) => stdout.push(chunk));
-    child.stderr.on('data', (chunk) => stderr.push(chunk));
-    child.on('error', (error) => {
+    let outputBytes = 0;
+    let errorBytes = 0;
+    let settled = false;
+    let timer;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
-      reject(error);
+      callback(value);
+    };
+    timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      finish(reject, new Error('RHVoice synthesis timed out'));
+    }, RHVOICE_TIMEOUT_MS);
+
+    child.stdout.on('data', (chunk) => {
+      outputBytes += chunk.length;
+      if (outputBytes > MAX_AUDIO_BYTES) {
+        child.kill('SIGKILL');
+        finish(reject, new Error('RHVoice audio exceeded the safety limit'));
+        return;
+      }
+      stdout.push(chunk);
+    });
+    child.stderr.on('data', (chunk) => {
+      if (errorBytes < 64 * 1024) {
+        stderr.push(chunk);
+        errorBytes += chunk.length;
+      }
+    });
+    child.on('error', (error) => {
+      finish(reject, error);
     });
     child.on('close', (code) => {
-      clearTimeout(timer);
       if (code !== 0) {
-        reject(new Error(Buffer.concat(stderr).toString('utf8').trim() || `RHVoice exited with code ${code}`));
+        finish(reject, new Error(Buffer.concat(stderr).toString('utf8').trim() || `RHVoice exited with code ${code}`));
         return;
       }
       const audio = Buffer.concat(stdout);
       if (audio.length < 44) {
-        reject(new Error('RHVoice returned an empty WAV file'));
+        finish(reject, new Error('RHVoice returned an empty WAV file'));
         return;
       }
-      resolve(Readable.from(audio));
+      finish(resolve, Readable.from(audio));
     });
 
+    child.stdin.on('error', (error) => finish(reject, error));
     child.stdin.end(text, 'utf8');
   });
 }
