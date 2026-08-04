@@ -8,13 +8,11 @@
   "availableVoices": {
     "svetlana": { "name": "Svetlana (Женский 🇷🇺)", "voice": "ru-RU-SvetlanaNeural" },
     "dmitry": { "name": "Dmitry (Мужской 🇷🇺)", "voice": "ru-RU-DmitryNeural" },
-    "ava": { "name": "Ava (English 🇺🇸)", "voice": "en-US-AvaNeural" },
-    "andrew_multi": { "name": "Andrew Multilingual (Мужской 🌍)", "voice": "en-US-AndrewMultilingualNeural" },
-    "ava_multi": { "name": "Ava Multilingual (Женский 🌍)", "voice": "en-US-AvaMultilingualNeural" },
-    "brian_multi": { "name": "Brian Multilingual (Мужской 🌍)", "voice": "en-US-BrianMultilingualNeural" },
-    "emma_multi": { "name": "Emma Multilingual (Женский 🌍)", "voice": "en-US-EmmaMultilingualNeural" },
-    "polina": { "name": "Polina (Женский 🇺🇦)", "voice": "uk-UA-PolinaNeural" },
-    "ostap": { "name": "Ostap (Мужской 🇺🇦)", "voice": "uk-UA-OstapNeural" },
+    "aidar": { "name": "Aidar (Silero • Мужской 🇷🇺)", "voice": "silero:aidar" },
+    "baya": { "name": "Baya (Silero • Женский 🇷🇺)", "voice": "silero:baya" },
+    "kseniya": { "name": "Kseniya (Silero • Женский 🇷🇺)", "voice": "silero:kseniya" },
+    "xenia": { "name": "Xenia (Silero • Женский 🇷🇺)", "voice": "silero:xenia" },
+    "eugene": { "name": "Eugene (Silero • Мужской 🇷🇺)", "voice": "silero:eugene" },
     "google": { "name": "Google TTS (Стандарт)", "voice": "google-ru" }
   }
 }

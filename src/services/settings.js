@@ -71,8 +71,14 @@ const upsertGuild = db.prepare(`
 
 function getUser(userId) {
   const row = selectUser.get(userId);
+  const allowedVoices = new Set(Object.values(config.availableVoices).map((item) => item.voice));
   return row
-    ? { voice: row.voice, rate: row.rate, pitch: row.pitch, volume: row.volume }
+    ? {
+        voice: allowedVoices.has(row.voice) ? row.voice : config.defaultVoice,
+        rate: row.rate,
+        pitch: row.pitch,
+        volume: row.volume,
+      }
     : { voice: config.defaultVoice, rate: 1, pitch: 0, volume: 100 };
 }
 

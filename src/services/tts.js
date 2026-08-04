@@ -3,6 +3,27 @@ const googleTTS = require('google-tts-api');
 const { Readable } = require('stream');
 const config = require('../../config.json');
 
+async function getSileroAudio(text, voiceName, options) {
+  const baseUrl = process.env.SILERO_TTS_URL || 'http://silero:8000';
+  const rate = Math.min(100, Math.max(0, Math.round(50 + ((Number(options.rate) || 1) - 1) * 50)));
+  const pitch = Math.min(100, Math.max(0, Math.round((Number(options.pitch) || 0) + 50)));
+  const url = new URL('/generate', baseUrl);
+  url.search = new URLSearchParams({
+    text,
+    speaker: voiceName.slice('silero:'.length),
+    sample_rate: '48000',
+    pitch: String(pitch),
+    rate: String(rate),
+  }).toString();
+
+  const response = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+  if (!response.ok) {
+    throw new Error(`Silero returned HTTP ${response.status}`);
+  }
+
+  return Readable.fromWeb(response.body);
+}
+
 /**
  * Synthesizes text to audio stream or audio URLs using Microsoft Edge Neural TTS or Google TTS.
  * Completely free, no API keys or payments required.
@@ -17,6 +38,16 @@ async function getTTSAudioSources(text, voiceName = config.defaultVoice, options
   const pitchValue = Math.round(Number(options.pitch) || 0);
   const pitch = `${pitchValue >= 0 ? '+' : ''}${pitchValue}%`;
   const volume = Math.round(Number(options.volume) || 100);
+
+  if (voiceName.startsWith('silero:')) {
+    try {
+      return [await getSileroAudio(text, voiceName, options)];
+    } catch (error) {
+      console.error(`[Silero TTS Error for voice ${voiceName}]:`, error.message);
+      console.log('[TTS Fallback]: Switching to Microsoft Edge TTS...');
+      voiceName = config.defaultVoice;
+    }
+  }
 
   // Fallback to Google TTS if requested
   if (voiceName && voiceName.startsWith('google')) {

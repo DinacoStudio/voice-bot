@@ -10,6 +10,9 @@ services:
     environment:
       NODE_ENV: production
       DISCORD_TOKEN: ${DISCORD_TOKEN:?Set DISCORD_TOKEN in the Komodo stack environment}
+      SILERO_TTS_URL: http://silero:8000
+    depends_on:
+      - silero
     volumes:
       - voice_bot_data:/app/data
     read_only: true
@@ -20,6 +23,16 @@ services:
     cap_drop:
       - ALL
     stop_grace_period: 20s
+
+  silero:
+    image: twirapp/silero-tts-api-server:latest
+    restart: unless-stopped
+    environment:
+      TEXT_LENGTH_LIMIT: 930
+      MKL_NUM_THREADS: ${SILERO_CPU_THREADS:-2}
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
 
 volumes:
   voice_bot_data:
