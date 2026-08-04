@@ -35,6 +35,12 @@ function sanitizeText(text, maxLength = 200) {
     .replace(/\s+/g, ' ')
     .trim();
 
+  // Punctuation-only messages must not reach TTS. Otherwise the player adds
+  // the author prefix and Discord hears only "<name> говорит".
+  if (!/[\p{L}\p{N}]/u.test(cleaned)) {
+    return '';
+  }
+
   if (cleaned.length > maxLength) {
     cleaned = cleaned.substring(0, maxLength) + '...';
   }
