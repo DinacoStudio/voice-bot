@@ -74,7 +74,8 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('skip')
-    .setDescription('Пропустить текущую озвучку'),
+    .setDescription('Пропустить текущую озвучку (только администраторы)')
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 
   new SlashCommandBuilder()
     .setName('help')
@@ -300,6 +301,12 @@ async function handleSlashCommand(interaction) {
     }
 
     case 'skip': {
+      if (!interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
+        return interaction.reply({
+          content: '❌ Пропускать озвучку могут только администраторы.',
+          flags: MessageFlags.Ephemeral,
+        });
+      }
       playerManager.skip(guildId);
       return interaction.reply('⏭️ Пропущено.');
     }
