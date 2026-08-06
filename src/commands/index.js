@@ -1,5 +1,5 @@
 const playerManager = require("../services/player");
-const { sanitizeText } = require("../../tts-sanitizer");
+const { sanitizeText } = require("../utils/sanitize");
 const config = require("../../config.json");
 
 async function handleCommand(message, prefix) {

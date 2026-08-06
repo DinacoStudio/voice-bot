@@ -2,9 +2,91 @@ const { MsEdgeTTS, OUTPUT_FORMAT } = require('msedge-tts');
 const googleTTS = require('google-tts-api');
 const { Readable } = require('stream');
 const { spawn } = require('child_process');
+const { sanitizeText } = require('../utils/sanitize');
 const config = require('../../config.json');
 const RHVOICE_TIMEOUT_MS = 30_000;
+const EDGE_TTS_TIMEOUT_MS = 45_000;
 const MAX_AUDIO_BYTES = 32 * 1024 * 1024;
+
+function guardEdgeTTSStreams(tts) {
+  const streams = tts._streams || {};
+  const unknownStream = {
+    turnEnded: false,
+    audio: { push() {} },
+    metadata: { push() {} },
+  };
+  tts._streams = new Proxy(streams, {
+    get(target, property, receiver) {
+      if (typeof property === 'symbol' || Reflect.has(target, property)) {
+        return Reflect.get(target, property, receiver);
+      }
+      return unknownStream;
+    },
+  });
+
+  for (const methodName of ['_pushAudioData', '_pushMetadata']) {
+    const original = tts[methodName];
+    if (typeof original !== 'function') continue;
+    tts[methodName] = function guardedPush(data, requestId) {
+      if (!requestId || !Object.prototype.hasOwnProperty.call(this._streams, requestId)) {
+        console.warn(`[MsEdgeTTS]: ignored ${methodName} for unknown request ${requestId || '<missing>'}`);
+        return;
+      }
+      return original.call(this, data, requestId);
+    };
+  }
+  return tts;
+}
+
+function readAudioStream(stream, timeoutMs = EDGE_TTS_TIMEOUT_MS) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let bytes = 0;
+    let settled = false;
+    const finish = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      stream.removeListener('data', onData);
+      stream.removeListener('end', onEnd);
+      stream.removeListener('error', onError);
+      callback(value);
+    };
+    const onData = (chunk) => {
+      bytes += chunk.length;
+      if (bytes > MAX_AUDIO_BYTES) {
+        stream.destroy();
+        finish(reject, new Error('Edge TTS audio exceeded the safety limit'));
+        return;
+      }
+      chunks.push(Buffer.from(chunk));
+    };
+    const onEnd = () => {
+      const audio = Buffer.concat(chunks);
+      if (!audio.length) finish(reject, new Error('Edge TTS returned empty audio'));
+      else finish(resolve, audio);
+    };
+    const onError = (error) => finish(reject, error);
+    const timer = setTimeout(() => {
+      stream.destroy();
+      finish(reject, new Error('Edge TTS synthesis timed out'));
+    }, timeoutMs);
+
+    stream.on('data', onData);
+    stream.once('end', onEnd);
+    stream.once('error', onError);
+  });
+}
+
+function getGoogleAudioUrls(text, lang = 'ru', slow = false) {
+  const urls = googleTTS.getAllAudioUrls(text, {
+    lang,
+    slow,
+    host: 'https://translate.google.com',
+    splitPunct: ',.?!',
+  });
+  return urls.map((item) => item.url);
+}
 
 async function getRHVoiceAudio(text, voiceName, options) {
   const rate = Math.min(200, Math.max(50, Math.round((Number(options.rate) || 1) * 100)));
@@ -84,7 +166,10 @@ async function getRHVoiceAudio(text, voiceName, options) {
  * @returns {Promise<Array<string|Readable>>} Array of stream objects or HTTP audio URLs
  */
 async function getTTSAudioSources(text, voiceName = config.defaultVoice, options = {}) {
-  if (!text || text.trim().length === 0) return [];
+  // Last line of defence: every route, including future ones, is sanitized at
+  // the actual external TTS boundary rather than relying only on its caller.
+  text = sanitizeText(text, 1000);
+  if (!text) return [];
   const rate = Number(options.rate) || 1;
   const pitchValue = Math.round(Number(options.pitch) || 0);
   const pitch = `${pitchValue >= 0 ? '+' : ''}${pitchValue}%`;
@@ -104,13 +189,7 @@ async function getTTSAudioSources(text, voiceName = config.defaultVoice, options
   if (voiceName && voiceName.startsWith('google')) {
     try {
       const lang = voiceName.split('-')[1] || 'ru';
-      const urls = googleTTS.getAllAudioUrls(text, {
-        lang: lang,
-        slow: rate < 0.9,
-        host: 'https://translate.google.com',
-        splitPunct: ',.?!',
-      });
-      return urls.map((u) => u.url);
+      return getGoogleAudioUrls(text, lang, rate < 0.9);
     } catch (err) {
       console.error('[Google TTS Error]:', err);
       const singleUrl = googleTTS.getAudioUrl(text, { lang: 'ru', slow: false });
@@ -120,7 +199,7 @@ async function getTTSAudioSources(text, voiceName = config.defaultVoice, options
 
   // Microsoft Edge Neural TTS (Free, high-definition neural voice)
   try {
-    const tts = new MsEdgeTTS();
+    const tts = guardEdgeTTSStreams(new MsEdgeTTS());
     await tts.setMetadata(voiceName, OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3);
     const { audioStream } = tts.toStream(text, { rate, pitch, volume });
 
@@ -128,14 +207,16 @@ async function getTTSAudioSources(text, voiceName = config.defaultVoice, options
       throw new TypeError('msedge-tts did not return a readable audio stream');
     }
 
-    return [audioStream];
+    // toStream() returns before WebSocket callbacks run. Buffering here makes
+    // those later stream failures awaitable, so this catch can use the fallback.
+    const audio = await readAudioStream(audioStream);
+    return [Readable.from(audio)];
   } catch (error) {
     console.error(`[MsEdgeTTS Error for voice ${voiceName}]:`, error.message);
     console.log('[TTS Fallback]: Switching to Google TTS...');
     // Fallback to Google TTS
-    const urls = googleTTS.getAllAudioUrls(text, { lang: 'ru', slow: false });
-    return urls.map((u) => u.url);
+    return getGoogleAudioUrls(text, 'ru', false);
   }
 }
 
-module.exports = { getTTSAudioSources };
+module.exports = { getTTSAudioSources, guardEdgeTTSStreams, readAudioStream };
