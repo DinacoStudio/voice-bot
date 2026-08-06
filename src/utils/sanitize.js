@@ -21,14 +21,20 @@ function stripDiscordAndMarkdown(value) {
     .replace(/`[^`\n]*`/g, " ")
     .replace(/<a?:[A-Za-z0-9_~]+:\d+>/g, " ")
     .replace(/<@!?\d+>|<@&\d+>|<#\d+>|<t:\d+(?::[tTdDfFR])?>|<\/?[A-Za-z][^>\n]*>/g, " ")
-    .replace(/\[([^\]\n]+)]\([^\n)]*\)/g, "$1")
-    .replace(/\b(?:https?|ftp):\/\/[^\s<>()]+|\bwww\.[^\s<>()]+/giu, " ")
+    .replace(/\[([^\n]+?)\]\((?:https?|ftp):\/\/[^\n)]*\)/giu, "$1 ссылка удалена")
+    .replace(/\b(?:https?|ftp):\/\/[^\s<>()]+|\bwww\.[^\s<>()]+/giu, " ссылка удалена ")
     .replace(/^\s{0,3}(?:#{1,6}|>+|[-+*]\s+|\d+[.)]\s+)\s*/gm, "")
     .replace(/^\s*\[[ xX]\]\s*/gm, "")
     .replace(/(?:\*\*\*|___|\*\*|__|~~|\|\||\*|_)/g, "")
     .replace(/^\s*[-*_]{3,}\s*$/gm, " ")
     .replace(/\p{Extended_Pictographic}|\p{Regional_Indicator}|[\u{1F3FB}-\u{1F3FF}\uFE0E\uFE0F\u200D\u20E3]/gu, " ")
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F\u00AD\u061C\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g, "");
+
+  // IDs, card-like values and other very long numbers are unpleasant for TTS.
+  // Keep ordinary years, dates and small quantities intact.
+  text = text
+    .replace(/\b0[xх]\d{6,}\b/giu, " ")
+    .replace(/\d{6,}/g, " число ");
 
   // Only characters which can usefully affect pronunciation or pauses survive.
   return text
@@ -133,25 +139,25 @@ function removeSequenceSpam(words) {
 }
 
 function isGibberishCollection(words) {
-  if (words.length < 4) return false;
+  const values = words.map(lettersOnly).filter(Boolean);
+  if (values.length < 4) return false;
   let suspicious = 0;
   let latin = 0;
-  for (const word of words) {
-    const value = lettersOnly(word);
+  for (const value of values) {
     if (/^[a-z]+$/i.test(value)) {
       latin++;
       const vowelCount = [...value].filter((c) => LAT_VOWELS.includes(c.toLowerCase())).length;
       if (/[^aeiouy]{3,}/i.test(value) || vowelCount / Math.max(1, value.length) < 0.18) suspicious++;
-    } else if (tokenLooksNoisy(word)) suspicious++;
+    } else if (tokenLooksNoisy(value)) suspicious++;
   }
-  const allLetters = words.map(lettersOnly).join("");
+  const allLetters = values.join("");
   const frequency = new Map();
   for (const char of allLetters) frequency.set(char, (frequency.get(char) || 0) + 1);
   const dominant = allLetters.length ? Math.max(...frequency.values()) / allLetters.length : 0;
-  const shortWords = words.filter((word) => lettersOnly(word).length <= 3).length / words.length;
-  const averageLength = allLetters.length / words.length;
-  return (words.length >= 8 && suspicious / words.length >= 0.58) ||
-    (words.length >= 8 && latin / words.length >= 0.8 && suspicious / words.length >= 0.42) ||
+  const shortWords = values.filter((value) => value.length <= 3).length / values.length;
+  const averageLength = allLetters.length / values.length;
+  return (values.length >= 8 && suspicious / values.length >= 0.58) ||
+    (values.length >= 8 && latin / values.length >= 0.8 && suspicious / values.length >= 0.42) ||
     (dominant >= 0.32 && shortWords >= 0.45) ||
     (dominant >= 0.45 && averageLength <= 4.5);
 }

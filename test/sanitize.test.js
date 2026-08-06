@@ -13,8 +13,20 @@ test("keeps normal speech", () => {
 
 test("removes Discord syntax, markdown, URLs and emoji", () => {
   const raw = "# **Привет** <@123> <:dance:456> 😀 [сайт](https://x.test) `code` ||мир||";
-  assert.equal(sanitizeText(raw), "Привет сайт мир");
+  assert.equal(sanitizeText(raw), "Привет сайт ссылка удалена мир");
   assert.equal(sanitizeText("😀 <:x:123> !!!"), "");
+});
+
+test("replaces URLs and long numbers with spoken placeholders", () => {
+  assert.equal(
+    sanitizeText("Заходи на https://example.com/test?id=123 и введи 123456789"),
+    "Заходи на ссылка удалена и введи число",
+  );
+  assert.equal(sanitizeText("Код 12345, год 2026"), "Код 12345, год 2026");
+  assert.equal(
+    sanitizeText("[официальный сайт](https://example.com)"),
+    "официальный сайт ссылка удалена",
+  );
 });
 
 test("removes invisible and unsafe symbols", () => {
