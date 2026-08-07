@@ -12,7 +12,8 @@ const {
 } = require("discord.js");
 const playerManager = require("../services/player");
 const settings = require("../services/settings");
-const { sanitizeText } = require("../utils/sanitize");
+const { sanitizeTextWithDiagnostics } = require("../utils/sanitize");
+const { logSanitizerDrop } = require("../utils/sanitizerLog");
 const config = require("../../config.json");
 const voiceChoices = Object.entries(config.availableVoices).map(
   ([value, item]) => ({ name: item.name, value }),
@@ -427,9 +428,11 @@ async function handleSlashCommand(interaction) {
 
       const rawText = options.getString("text");
       const guildSettings = settings.getGuild(guildId);
-      const cleanText = sanitizeText(rawText, guildSettings.maxTextLength);
+      const sanitized = sanitizeTextWithDiagnostics(rawText, guildSettings.maxTextLength);
+      const cleanText = sanitized.text;
 
       if (!cleanText) {
+        logSanitizerDrop("slash-say", sanitized, rawText);
         return interaction.reply({
           content: "❌ Укажите корректный текст для озвучки!",
           flags: MessageFlags.Ephemeral,

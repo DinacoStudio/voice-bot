@@ -2,7 +2,8 @@ const { MsEdgeTTS, OUTPUT_FORMAT } = require('msedge-tts');
 const googleTTS = require('google-tts-api');
 const { Readable } = require('stream');
 const { spawn } = require('child_process');
-const { sanitizeText } = require('../utils/sanitize');
+const { sanitizeTextWithDiagnostics } = require('../utils/sanitize');
+const { logSanitizerDrop } = require('../utils/sanitizerLog');
 const config = require('../../config.json');
 const RHVOICE_TIMEOUT_MS = 30_000;
 const EDGE_TTS_TIMEOUT_MS = 45_000;
@@ -168,9 +169,11 @@ async function getRHVoiceAudio(text, voiceName, options) {
 async function getTTSAudioSources(text, voiceName = config.defaultVoice, options = {}) {
   // Last line of defence: every route, including future ones, is sanitized at
   // the actual external TTS boundary rather than relying only on its caller.
-  text = sanitizeText(text, 1000);
+  const rawText = text;
+  const sanitized = sanitizeTextWithDiagnostics(rawText, 1000);
+  text = sanitized.text;
   if (!text) {
-    console.log('[TTS] message dropped by sanitizer at synthesis boundary');
+    logSanitizerDrop('tts-boundary', sanitized, rawText);
     return [];
   }
   const rate = Number(options.rate) || 1;

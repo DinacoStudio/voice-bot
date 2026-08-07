@@ -1,5 +1,6 @@
 const playerManager = require("../services/player");
-const { sanitizeText } = require("../utils/sanitize");
+const { sanitizeTextWithDiagnostics } = require("../utils/sanitize");
+const { logSanitizerDrop } = require("../utils/sanitizerLog");
 const config = require("../../config.json");
 
 async function handleCommand(message, prefix) {
@@ -45,9 +46,11 @@ async function handleCommand(message, prefix) {
       }
 
       const rawText = args.join(" ");
-      const text = sanitizeText(rawText, config.maxTextLength);
+      const sanitized = sanitizeTextWithDiagnostics(rawText, config.maxTextLength);
+      const text = sanitized.text;
 
       if (!text) {
+        logSanitizerDrop("prefix-tts", sanitized, rawText);
         return message.reply("❌ Укажите текст для озвучки!");
       }
 

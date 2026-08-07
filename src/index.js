@@ -4,7 +4,8 @@ const sodium = require('libsodium-wrappers');
 const playerManager = require('./services/player');
 const settings = require('./services/settings');
 const { registerSlashCommands, handleSlashCommand } = require('./commands/slashCommands');
-const { SANITIZER_VERSION, sanitizeText } = require('./utils/sanitize');
+const { sanitizeTextWithDiagnostics } = require('./utils/sanitize');
+const { logSanitizerDrop, logSanitizerLoad } = require('./utils/sanitizerLog');
 const config = require('../config.json');
 const pendingMessages = new Map();
 
@@ -26,12 +27,16 @@ async function flushMessages(key) {
   const guildSettings = settings.getGuild(pending.guildId);
   if (!guildSettings.autoTts) return;
 
-  const text = sanitizeText(pending.parts.join('. '), guildSettings.maxTextLength);
-  if (!text) return;
+  const rawText = pending.parts.join('. ');
+  const sanitized = sanitizeTextWithDiagnostics(rawText, guildSettings.maxTextLength);
+  if (!sanitized.text) {
+    logSanitizerDrop('auto-merge-flush', sanitized, rawText);
+    return;
+  }
 
   const authorName = guildSettings.readAuthorName ? pending.authorName : null;
   const userSettings = settings.getUser(pending.userId);
-  await playerManager.enqueue(pending.guildId, text, authorName, userSettings);
+  await playerManager.enqueue(pending.guildId, sanitized.text, authorName, userSettings);
 }
 
 const client = new Client({
@@ -51,7 +56,7 @@ client.once(Events.ClientReady, async () => {
 
   console.log(`=========================================`);
   console.log(`🤖 TTS Bot вошел как ${client.user.tag}`);
-  console.log(`[Sanitizer] active version ${SANITIZER_VERSION}`);
+  logSanitizerLoad();
   console.log(`=========================================`);
 
   // Register Slash Commands (/)
@@ -101,8 +106,12 @@ client.on(Events.MessageCreate, async (message) => {
       }
 
       // Clean the text
-      const cleanText = sanitizeText(message.content, guildSettings.maxTextLength);
-      if (!cleanText) return;
+      const sanitized = sanitizeTextWithDiagnostics(message.content, guildSettings.maxTextLength);
+      const cleanText = sanitized.text;
+      if (!cleanText) {
+        logSanitizerDrop('auto-message', sanitized, message.content);
+        return;
+      }
 
       // Merge consecutive messages from the same member. The timer restarts for
       // every new message and fires when the member has stopped sending text.

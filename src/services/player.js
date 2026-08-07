@@ -11,7 +11,8 @@ const {
 const sodium = require('libsodium-wrappers');
 const { Readable } = require('stream');
 const { getTTSAudioSources } = require('./tts');
-const { sanitizeText } = require('../utils/sanitize');
+const { sanitizeText, sanitizeTextWithDiagnostics } = require('../utils/sanitize');
+const { logSanitizerDrop } = require('../utils/sanitizerLog');
 const config = require('../../config.json');
 
 const MAX_QUEUE_SIZE = 50;
@@ -188,8 +189,12 @@ class GuildPlayerManager {
 
     // Filter the body before adding the author. A valid author name must not
     // make an empty or spam-only message meaningful at the TTS boundary.
-    const cleanText = sanitizeText(text, 1000);
-    if (!cleanText) return false;
+    const sanitized = sanitizeTextWithDiagnostics(text, 1000);
+    const cleanText = sanitized.text;
+    if (!cleanText) {
+      logSanitizerDrop('player-enqueue', sanitized, text);
+      return false;
+    }
     const cleanAuthor = authorName ? sanitizeText(authorName, 80) : '';
     const fullText = cleanAuthor ? `${cleanAuthor} говорит: ${cleanText}` : cleanText;
 

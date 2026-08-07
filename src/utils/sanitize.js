@@ -9,7 +9,7 @@
  */
 
 const WORD_RE = /[\p{L}\p{M}\p{N}]+(?:[-'][\p{L}\p{M}\p{N}]+)*/gu;
-const SANITIZER_VERSION = "2026-08-07.3";
+const SANITIZER_VERSION = "2026-08-07.4";
 const CYR_VOWELS = "аеёиоуыэюя";
 const LAT_VOWELS = "aeiouy";
 
@@ -204,24 +204,47 @@ function truncateNaturally(text, maxLength) {
   return `${(boundary >= maxLength * 0.65 ? cut.slice(0, boundary) : cut).trim()}…`;
 }
 
-function sanitizeText(input, maxLength = 200) {
-  if (typeof input !== "string" || !input.trim()) return "";
+function sanitizerDiagnostics(reason, text = "", extra = {}) {
+  return {
+    text,
+    reason,
+    version: SANITIZER_VERSION,
+    modulePath: __filename,
+    ...extra,
+  };
+}
+
+function sanitizeTextWithDiagnostics(input, maxLength = 200) {
+  if (typeof input !== "string") return sanitizerDiagnostics("not-a-string");
+  if (!input.trim()) return sanitizerDiagnostics("blank");
   const limit = Number.isFinite(maxLength) ? Math.max(1, Math.floor(maxLength)) : 200;
-  if (isDenseGeneratedNoise(input)) return "";
+  const inputLength = input.length;
+  if (isDenseGeneratedNoise(input)) return sanitizerDiagnostics("dense-generated-noise", "", { inputLength, limit });
   let text = stripDiscordAndMarkdown(input);
   text = collapseUrlPlaceholders(text);
-  if (!/[\p{L}\p{N}]/u.test(text)) return "";
-  if (isPeriodicNoise(text)) return "";
+  if (!/[\p{L}\p{N}]/u.test(text)) return sanitizerDiagnostics("no-letters-or-digits-after-markup", "", { inputLength, limit });
+  if (isPeriodicNoise(text)) return sanitizerDiagnostics("periodic-noise", "", { inputLength, cleanLength: text.length, limit });
   const compactLength = text.replace(/\s/g, "").length;
   const punctuationLength = (text.match(/[.,!?;:'"()\-—–…]/g) || []).length;
   const letterLength = (text.match(/[\p{L}\p{M}]/gu) || []).length;
-  if (compactLength >= 12 && punctuationLength / compactLength >= 0.42 && letterLength <= 40) return "";
+  if (compactLength >= 12 && punctuationLength / compactLength >= 0.42 && letterLength <= 40) {
+    return sanitizerDiagnostics("punctuation-heavy-noise", "", { inputLength, cleanLength: text.length, limit });
+  }
 
   const rawWords = text.match(WORD_RE) || [];
   const rejected = new Set(rawWords.filter(tokenLooksNoisy));
   let cleanWords = rawWords.filter((word) => !rejected.has(word));
   cleanWords = removeSequenceSpam(cleanWords);
-  if (isGibberishCollection(cleanWords)) return "";
+  if (isGibberishCollection(cleanWords)) {
+    return sanitizerDiagnostics("gibberish-word-collection", "", {
+      inputLength,
+      cleanLength: text.length,
+      rawWords: rawWords.length,
+      keptWords: cleanWords.length,
+      rejectedWords: rejected.size,
+      limit,
+    });
+  }
   const allowed = new Map();
   for (const word of cleanWords) allowed.set(word, (allowed.get(word) || 0) + 1);
 
@@ -242,9 +265,21 @@ function sanitizeText(input, maxLength = 200) {
     .replace(/([.,!?;:])(?:\s*[.,!?;:])+/g, "$1")
     .trim();
 
-  if (!/[\p{L}\p{N}]/u.test(text)) return "";
-  if (isGibberishCollection(text.match(WORD_RE) || [])) return "";
-  return truncateNaturally(text, limit);
+  if (!/[\p{L}\p{N}]/u.test(text)) {
+    return sanitizerDiagnostics("no-letters-or-digits-after-word-filter", "", {
+      inputLength,
+      rawWords: rawWords.length,
+      rejectedWords: rejected.size,
+      limit,
+    });
+  }
+  if (isGibberishCollection(text.match(WORD_RE) || [])) return sanitizerDiagnostics("gibberish-after-word-filter", "", { inputLength, cleanLength: text.length, limit });
+  const output = truncateNaturally(text, limit);
+  return sanitizerDiagnostics("ok", output, { inputLength, cleanLength: text.length, outputLength: output.length, limit });
 }
 
-module.exports = { SANITIZER_VERSION, sanitizeText, stripDiscordAndMarkdown };
+function sanitizeText(input, maxLength = 200) {
+  return sanitizeTextWithDiagnostics(input, maxLength).text;
+}
+
+module.exports = { SANITIZER_VERSION, sanitizeText, sanitizeTextWithDiagnostics, stripDiscordAndMarkdown };
