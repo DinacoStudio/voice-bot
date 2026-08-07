@@ -63,7 +63,7 @@ function collapseRuns(word) {
 
 function repeatingUnit(word) {
   const value = lettersOnly(word);
-  if (value.length < 10) return null;
+  if (value.length < 6) return null;
   for (let offset = 0; offset < Math.min(8, value.length); offset++) {
     const tail = value.slice(offset);
     for (let size = 1; size <= Math.min(8, Math.floor(tail.length / 4)); size++) {
@@ -138,7 +138,7 @@ function removeSequenceSpam(words) {
     frequency.set(key, list);
   });
   for (const indexes of frequency.values()) {
-    if (indexes.length >= 6 && indexes.length / words.length >= 0.35) indexes.forEach((i) => dropped.add(i));
+    if (indexes.length >= 4 && indexes.length / words.length >= 0.30) indexes.forEach((i) => dropped.add(i));
   }
   return words.filter((_, i) => !dropped.has(i));
 }
@@ -170,7 +170,7 @@ function isGibberishCollection(words) {
 function isPeriodicNoise(text) {
   const value = text.toLocaleLowerCase("ru-RU").replace(/\s+/g, "");
   if (value.length < 30) return false;
-  for (let size = 1; size <= Math.min(16, Math.floor(value.length / 5)); size++) {
+  for (let size = 1; size <= Math.min(100, Math.floor(value.length / 3)); size++) {
     const unit = value.slice(0, size);
     let matches = 0;
     for (let i = 0; i < value.length; i++) if (value[i] === unit[i % size]) matches++;
