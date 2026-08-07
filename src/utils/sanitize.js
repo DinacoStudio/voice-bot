@@ -9,6 +9,7 @@
  */
 
 const WORD_RE = /[\p{L}\p{M}\p{N}]+(?:[-'][\p{L}\p{M}\p{N}]+)*/gu;
+const SANITIZER_VERSION = "2026-08-07.3";
 const CYR_VOWELS = "аеёиоуыэюя";
 const LAT_VOWELS = "aeiouy";
 
@@ -246,4 +247,4 @@ function sanitizeText(input, maxLength = 200) {
   return truncateNaturally(text, limit);
 }
 
-module.exports = { sanitizeText, stripDiscordAndMarkdown };
+module.exports = { SANITIZER_VERSION, sanitizeText, stripDiscordAndMarkdown };

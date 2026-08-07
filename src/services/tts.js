@@ -169,7 +169,10 @@ async function getTTSAudioSources(text, voiceName = config.defaultVoice, options
   // Last line of defence: every route, including future ones, is sanitized at
   // the actual external TTS boundary rather than relying only on its caller.
   text = sanitizeText(text, 1000);
-  if (!text) return [];
+  if (!text) {
+    console.log('[TTS] message dropped by sanitizer at synthesis boundary');
+    return [];
+  }
   const rate = Number(options.rate) || 1;
   const pitchValue = Math.round(Number(options.pitch) || 0);
   const pitch = `${pitchValue >= 0 ? '+' : ''}${pitchValue}%`;

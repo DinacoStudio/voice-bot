@@ -3,7 +3,14 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 const { Readable } = require("node:stream");
-const { guardEdgeTTSStreams, readAudioStream } = require("../src/services/tts");
+const fs = require("node:fs");
+const path = require("node:path");
+const { getTTSAudioSources, guardEdgeTTSStreams, readAudioStream } = require("../src/services/tts");
+
+test("example24 cannot reach any speech provider", async () => {
+  const text = fs.readFileSync(path.join(__dirname, "..", "examples", "example24.txt"), "utf8");
+  assert.deepEqual(await getTTSAudioSources(text), []);
+});
 
 test("Edge guard ignores WebSocket frames for an unknown request", () => {
   let pushed = 0;

@@ -4,7 +4,7 @@ const sodium = require('libsodium-wrappers');
 const playerManager = require('./services/player');
 const settings = require('./services/settings');
 const { registerSlashCommands, handleSlashCommand } = require('./commands/slashCommands');
-const { sanitizeText } = require('./utils/sanitize');
+const { SANITIZER_VERSION, sanitizeText } = require('./utils/sanitize');
 const config = require('../config.json');
 const pendingMessages = new Map();
 
@@ -51,6 +51,7 @@ client.once(Events.ClientReady, async () => {
 
   console.log(`=========================================`);
   console.log(`🤖 TTS Bot вошел как ${client.user.tag}`);
+  console.log(`[Sanitizer] active version ${SANITIZER_VERSION}`);
   console.log(`=========================================`);
 
   // Register Slash Commands (/)
