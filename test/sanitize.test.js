@@ -57,6 +57,11 @@ test("real examples classify normal text and spam", () => {
   for (const name of ["example2.txt", "example4.txt", "example5.txt", "example7.txt", "example8.txt", "example9.txt", "example10.txt", "example12.txt", "example13.txt", "example15.txt", "example16.txt", "example17.txt", "example19.txt", "example20.txt", "example21.txt", "example22.txt", "example23.txt", "example24.txt"]) {
     assert.equal(sanitizeText(read(name)), "", `${name} must be silenced`);
   }
+  const example24 = read("example24.txt");
+  for (let offset = 0; offset < example24.length; offset += 200) {
+    assert.equal(sanitizeText(example24.slice(offset, offset + 200)), "",
+      `example24.txt chunk at ${offset} must be silenced`);
+  }
   assert.match(sanitizeText(read("example18.txt")), /^Вот та же последовательность/,
     "normal introduction in a mixed message must survive");
 });

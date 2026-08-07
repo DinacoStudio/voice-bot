@@ -180,19 +180,20 @@ function isPeriodicNoise(text) {
 
 function isDenseGeneratedNoise(text) {
   const compact = text.replace(/\s+/g, "");
-  if (compact.length < 70) return false;
+  if (compact.length < 24) return false;
   if ((text.match(/\s/g) || []).length / Math.max(1, text.length) > 0.03) return false;
 
   const digitRuns = compact.match(/\d{2,}/g) || [];
   const letterRuns = compact.match(/[\p{L}\p{M}]{4,}/gu) || [];
-  if (digitRuns.length < 3 || letterRuns.length < 4) return false;
+  const requiredGroups = compact.length >= 70 ? 3 : 2;
+  if (digitRuns.length < requiredGroups || letterRuns.length < requiredGroups) return false;
 
   let repeatedUnits = 0;
   for (const run of letterRuns) {
     const value = lettersOnly(run);
     if (repeatingUnit(value) || /([\p{L}\p{M}]{2,5})\1/iu.test(value)) repeatedUnits++;
   }
-  return repeatedUnits >= 3;
+  return repeatedUnits >= requiredGroups;
 }
 
 function truncateNaturally(text, maxLength) {
