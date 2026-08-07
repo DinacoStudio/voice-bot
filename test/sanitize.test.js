@@ -27,6 +27,14 @@ test("replaces URLs and long numbers with spoken placeholders", () => {
     sanitizeText("[официальный сайт](https://example.com)"),
     "официальный сайт ссылка удалена",
   );
+  assert.equal(
+    sanitizeText("https://a.test https://b.test https://c.test https://d.test"),
+    "ссылка удалена",
+  );
+  assert.equal(
+    sanitizeText("Ссылки: https://a.test, https://b.test, https://c.test"),
+    "Ссылки: ссылка удалена",
+  );
 });
 
 test("removes invisible and unsafe symbols", () => {
@@ -46,7 +54,7 @@ test("real examples classify normal text and spam", () => {
   for (const name of ["example.txt", "example3.txt", "example6.txt", "example11.txt", "example14.txt"]) {
     assert.notEqual(sanitizeText(read(name)), "", `${name} must remain readable`);
   }
-  for (const name of ["example2.txt", "example4.txt", "example5.txt", "example7.txt", "example8.txt", "example9.txt", "example10.txt", "example12.txt", "example13.txt", "example15.txt", "example16.txt", "example17.txt", "example19.txt", "example20.txt", "example21.txt", "example22.txt", "example23.txt"]) {
+  for (const name of ["example2.txt", "example4.txt", "example5.txt", "example7.txt", "example8.txt", "example9.txt", "example10.txt", "example12.txt", "example13.txt", "example15.txt", "example16.txt", "example17.txt", "example19.txt", "example20.txt", "example21.txt", "example22.txt", "example23.txt", "example24.txt"]) {
     assert.equal(sanitizeText(read(name)), "", `${name} must be silenced`);
   }
   assert.match(sanitizeText(read("example18.txt")), /^Вот та же последовательность/,

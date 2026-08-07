@@ -48,6 +48,10 @@ function stripDiscordAndMarkdown(value) {
     .trim();
 }
 
+function collapseUrlPlaceholders(text) {
+  return text.replace(/ссылка удалена(?:[\s.,!?;]+ссылка удалена)+/giu, "ссылка удалена");
+}
+
 function lettersOnly(word) {
   return word.toLocaleLowerCase("ru-RU").replace(/[^\p{L}\p{M}]/gu, "");
 }
@@ -174,6 +178,23 @@ function isPeriodicNoise(text) {
   return false;
 }
 
+function isDenseGeneratedNoise(text) {
+  const compact = text.replace(/\s+/g, "");
+  if (compact.length < 70) return false;
+  if ((text.match(/\s/g) || []).length / Math.max(1, text.length) > 0.03) return false;
+
+  const digitRuns = compact.match(/\d{2,}/g) || [];
+  const letterRuns = compact.match(/[\p{L}\p{M}]{4,}/gu) || [];
+  if (digitRuns.length < 3 || letterRuns.length < 4) return false;
+
+  let repeatedUnits = 0;
+  for (const run of letterRuns) {
+    const value = lettersOnly(run);
+    if (repeatingUnit(value) || /([\p{L}\p{M}]{2,5})\1/iu.test(value)) repeatedUnits++;
+  }
+  return repeatedUnits >= 3;
+}
+
 function truncateNaturally(text, maxLength) {
   if (text.length <= maxLength) return text;
   const cut = text.slice(0, Math.max(1, maxLength - 1));
@@ -184,7 +205,9 @@ function truncateNaturally(text, maxLength) {
 function sanitizeText(input, maxLength = 200) {
   if (typeof input !== "string" || !input.trim()) return "";
   const limit = Number.isFinite(maxLength) ? Math.max(1, Math.floor(maxLength)) : 200;
+  if (isDenseGeneratedNoise(input)) return "";
   let text = stripDiscordAndMarkdown(input);
+  text = collapseUrlPlaceholders(text);
   if (!/[\p{L}\p{N}]/u.test(text)) return "";
   if (isPeriodicNoise(text)) return "";
   const compactLength = text.replace(/\s/g, "").length;
@@ -209,6 +232,7 @@ function sanitizeText(input, maxLength = 200) {
 
   // Four or more identical spoken words are spam; two/three can be natural.
   text = text
+    .replace(/ссылка удалена(?:[\s.,!?;]+ссылка удалена)+/giu, "ссылка удалена ")
     .replace(/\b([\p{L}\p{M}\p{N}]{2,})(?:[\s.,!?;:]+\1){3,}\b/giu, " ")
     .replace(/\s+/g, " ")
     .replace(/\s+([.,!?;:])/g, "$1")
